@@ -39,7 +39,7 @@ class EmptyView: UIView {
         button.addTarget(self, action: #selector(retry), for: .touchUpInside)
 
         let stackView = UIStackView(arrangedSubviews: [
-            imageView,
+            //imageView,
             titleLabel,
         ])
         stackView.translatesAutoresizingMaskIntoConstraints = false

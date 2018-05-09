@@ -52,7 +52,7 @@ class TransactionsEmptyView: UIView {
         depositButton.addTarget(self, action: #selector(deposit(_:)), for: .touchUpInside)
 
         let stackView = UIStackView(arrangedSubviews: [
-            imageView,
+            //imageView,
             titleLabel,
             //depositButton,
         ])

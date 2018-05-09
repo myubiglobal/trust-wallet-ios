@@ -159,6 +159,7 @@ class SettingsViewController: FormViewController {
                 cell.accessoryType = .disclosureIndicator
             }
 
+            /*
             +++ Section(NSLocalizedString("settings.joinCommunity.label.title", value: "Join Community", comment: ""))
 
             <<< linkProvider(type: .twitter)
@@ -167,7 +168,7 @@ class SettingsViewController: FormViewController {
             <<< linkProvider(type: .discord)
 
             +++ Section(NSLocalizedString("settings.support.label.title", value: "Support", comment: ""))
-
+            
             <<< AppFormAppearance.button { button in
                 button.title = NSLocalizedString("settings.shareWithFriends.button.title", value: "Share With Friends", comment: "")
                 button.cell.imageView?.image = R.image.settingsShare()
@@ -182,6 +183,7 @@ class SettingsViewController: FormViewController {
             }.cellSetup { cell, _ in
                 cell.imageView?.image = R.image.settings_rating()
             }
+            */
 
             +++ Section()
 

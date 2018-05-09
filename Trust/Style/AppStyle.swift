@@ -27,8 +27,8 @@ func applyStyle() {
 }
 
 struct Colors {
-    static let darkBlue = UIColor(hex: "3375BB")
-    static let blue = UIColor(hex: "2e91db")
+    static let darkBlue = UIColor(hex: "6c6c6c")
+    static let blue = UIColor(hex: "6c6c6c") //2e91db
     static let red = UIColor(hex: "f7506c")
     static let veryLightRed = UIColor(hex: "FFF4F4")
     static let veryLightOrange = UIColor(hex: "FFECC9")
@@ -39,7 +39,7 @@ struct Colors {
     static let darkGray = UIColor(hex: "606060")
     static let black = UIColor(hex: "313849")
     static let lightBlack = UIColor(hex: "313849")
-    static let lightBlue = UIColor(hex: "007aff")
+    static let lightBlue = UIColor(hex: "6c6c6c")
 }
 
 struct AppStyle {

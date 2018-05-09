@@ -22,19 +22,19 @@ class SupportViewController: FormViewController {
 
             <<< link(
                 title: NSLocalizedString("settings.faq.button.title", value: "FAQ", comment: ""),
-                value: "https://trustwalletapp.com/faq.html",
+                value: "https://myubi.global",
                 image: R.image.settings_faq()
             )
 
             <<< link(
                 title: NSLocalizedString("settings.privacyPolicy.button.title", value: "Privacy Policy", comment: ""),
-                value: "https://trustwalletapp.com/privacy-policy.html",
+                value: "https://myubi.global",
                 image: R.image.settings_privacy_policy()
             )
 
             <<< link(
                 title: NSLocalizedString("settings.termsOfService.button.title", value: "Terms of Service", comment: ""),
-                value: "https://trustwalletapp.com/terms.html",
+                value: "https://myubi.global",
                 image: R.image.settings_terms()
             )
 
@@ -46,6 +46,7 @@ class SupportViewController: FormViewController {
                 cell.imageView?.image = R.image.settings_email()
             }
 
+            /*
             +++ Section(NSLocalizedString("settings.openSourceDevelopment.label.title", value: "Open Source Development", comment: ""))
 
             <<< link(
@@ -59,6 +60,7 @@ class SupportViewController: FormViewController {
                 value: "https://github.com/TrustWallet/trust-wallet-ios/issues/new",
                 image: R.image.settings_bug()
             )
+            */
     }
 
     private func link(
@@ -81,7 +83,7 @@ class SupportViewController: FormViewController {
         let composerController = MFMailComposeViewController()
         composerController.mailComposeDelegate = self
         composerController.setToRecipients([Constants.supportEmail])
-        composerController.setSubject(NSLocalizedString("settings.feedback.email.title", value: "Trust Feedback", comment: ""))
+        composerController.setSubject(NSLocalizedString("settings.feedback.email.title", value: "MYUBI Feedback", comment: ""))
         composerController.setMessageBody(emailTemplate(), isHTML: false)
 
         if MFMailComposeViewController.canSendMail() {
@@ -96,7 +98,7 @@ class SupportViewController: FormViewController {
         Helpful information to developers:
         iOS Version: \(UIDevice.current.systemVersion)
         Device Model: \(UIDevice.current.model)
-        Trust Version: \(Bundle.main.fullVersion)
+        MYUBI Version: \(Bundle.main.fullVersion)
         Current locale: \(Locale.preferredLanguages.first ?? "")
         """
     }
