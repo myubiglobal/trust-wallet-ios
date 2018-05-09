@@ -1,20 +1,29 @@
 // Copyright SIX DAY LLC. All rights reserved.
 
 import Foundation
+import RealmSwift
 
-struct CustomRPC {
-    let chainID: Int
-    let name: String
-    let symbol: String
-    let endpoint: String
-}
+class CustomRPC: Object {
+    @objc dynamic var chainID: Int = 0
+    @objc dynamic var name: String = ""
+    @objc dynamic var symbol: String = ""
+    @objc dynamic var endpoint: String = ""
+    @objc dynamic var id: String = UUID().uuidString
 
-extension CustomRPC: Equatable {
-    static func == (lhs: CustomRPC, rhs: CustomRPC) -> Bool {
-        return
-            lhs.chainID == rhs.chainID &&
-            lhs.name == rhs.name &&
-            lhs.symbol == rhs.symbol &&
-            lhs.endpoint == rhs.symbol
+    convenience init(
+            chainID: Int = 0,
+            name: String = "",
+            symbol: String = "",
+            endpoint: String = ""
+        ) {
+        self.init()
+        self.chainID = chainID
+        self.name = name
+        self.symbol = symbol
+        self.endpoint = endpoint
+    }
+
+    override class func primaryKey() -> String? {
+        return "id"
     }
 }

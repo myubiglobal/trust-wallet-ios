@@ -8,7 +8,6 @@ protocol Keystore {
     var hasWallets: Bool { get }
     var wallets: [Wallet] { get }
     var keysDirectory: URL { get }
-    var walletsDirectory: URL { get }
     var recentlyUsedWallet: Wallet? { get set }
     static var current: Wallet? { get }
     @available(iOS 10.0, *)
@@ -26,7 +25,8 @@ protocol Keystore {
     func delete(wallet: Wallet, completion: @escaping (Result<Void, KeystoreError>) -> Void)
     func updateAccount(account: Account, password: String, newPassword: String) -> Result<Void, KeystoreError>
     func signPersonalMessage(_ data: Data, for account: Account) -> Result<Data, KeystoreError>
-    func signMessage(_ data: Data, for account: Account) -> Result<Data, KeystoreError>
+    func signMessage(_ message: Data, for account: Account) -> Result<Data, KeystoreError>
+    func signTypedMessage(_ datas: [EthTypedData], for account: Account) -> Result<Data, KeystoreError>
     func signHash(_ hash: Data, for account: Account) -> Result<Data, KeystoreError>
     func signTransaction(_ signTransaction: SignTransaction) -> Result<Data, KeystoreError>
     func getPassword(for account: Account) -> String?

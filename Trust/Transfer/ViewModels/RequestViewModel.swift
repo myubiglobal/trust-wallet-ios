@@ -1,20 +1,27 @@
 // Copyright SIX DAY LLC. All rights reserved.
 
 import Foundation
-import TrustKeystore
+import TrustCore
 import UIKit
 
 struct RequestViewModel {
 
     let account: Wallet
     let config: Config
+    let token: TokenObject
 
     init(
         account: Wallet,
-        config: Config
+        config: Config,
+        token: TokenObject
     ) {
         self.account = account
         self.config = config
+        self.token = token
+    }
+
+    var title: String {
+        return token.displayName
     }
 
     var myAddressText: String {

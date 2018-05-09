@@ -2,7 +2,7 @@
 
 import Foundation
 import UIKit
-import TrustKeystore
+import TrustCore
 
 protocol PaymentCoordinatorDelegate: class {
     func didFinish(_ result: ConfirmResult, in coordinator: PaymentCoordinator)
@@ -16,7 +16,7 @@ class PaymentCoordinator: Coordinator {
 
     let flow: PaymentFlow
     var coordinators: [Coordinator] = []
-    let navigationController: UINavigationController
+    let navigationController: NavigationController
     let keystore: Keystore
     let storage: TokensDataStore
 
@@ -30,7 +30,7 @@ class PaymentCoordinator: Coordinator {
     }()
 
     init(
-        navigationController: UINavigationController = UINavigationController(),
+        navigationController: NavigationController = NavigationController(),
         flow: PaymentFlow,
         session: WalletSession,
         keystore: Keystore,
@@ -46,7 +46,8 @@ class PaymentCoordinator: Coordinator {
 
     func start() {
         switch (flow, session.account.type) {
-        case (.send(let type), .real(let account)):
+        case (.send(let type), .privateKey(let account)),
+             (.send(let type), .hd(let account)):
             let coordinator = SendCoordinator(
                 transferType: type,
                 navigationController: navigationController,
@@ -58,15 +59,16 @@ class PaymentCoordinator: Coordinator {
             coordinator.delegate = self
             coordinator.start()
             addCoordinator(coordinator)
-        case (.request, _):
+        case (.request(let token), _):
             let coordinator = RequestCoordinator(
                 navigationController: navigationController,
-                session: session
+                session: session,
+                token: token
             )
             coordinator.delegate = self
             coordinator.start()
             addCoordinator(coordinator)
-        case (.send, .watch):
+        case (.send, .address):
             // This case should be returning an error inCoordinator. Improve this logic into single piece.
             break
         }

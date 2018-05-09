@@ -1,6 +1,7 @@
 // Copyright SIX DAY LLC. All rights reserved.
 
 import Foundation
+import TrustCore
 import TrustKeystore
 import UIKit
 
@@ -13,7 +14,7 @@ protocol AccountsCoordinatorDelegate: class {
 
 class AccountsCoordinator: Coordinator {
 
-    let navigationController: UINavigationController
+    let navigationController: NavigationController
     let keystore: Keystore
     let session: WalletSession
     let balanceCoordinator: TokensBalanceService
@@ -21,9 +22,7 @@ class AccountsCoordinator: Coordinator {
 
     lazy var accountsViewController: AccountsViewController = {
         let controller = AccountsViewController(keystore: keystore, balanceCoordinator: balanceCoordinator)
-        controller.navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(dismiss))
         controller.navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(add))
-        controller.allowsAccountDeletion = true
         controller.delegate = self
         return controller
     }()
@@ -31,7 +30,7 @@ class AccountsCoordinator: Coordinator {
     weak var delegate: AccountsCoordinatorDelegate?
 
     init(
-        navigationController: UINavigationController,
+        navigationController: NavigationController,
         keystore: Keystore,
         session: WalletSession,
         balanceCoordinator: TokensBalanceService
@@ -69,7 +68,7 @@ class AccountsCoordinator: Coordinator {
         controller.popoverPresentationController?.sourceRect = sender.centerRect
 
         switch account.type {
-        case .real(let account):
+        case .privateKey(let account):
             let actionTitle = NSLocalizedString("wallets.backup.alertSheet.title", value: "Backup Keystore", comment: "The title of the backup button in the wallet's action sheet")
             let backupKeystoreAction = UIAlertAction(title: actionTitle, style: .default) { [unowned self] _ in
                 let coordinator = BackupCoordinator(
@@ -83,19 +82,11 @@ class AccountsCoordinator: Coordinator {
             }
             let exportTitle = NSLocalizedString("wallets.export.alertSheet.title", value: "Export Private Key", comment: "The title of the export button in the wallet's action sheet")
             let exportPrivateKeyAction = UIAlertAction(title: exportTitle, style: .default) { [unowned self] _ in
-
-                let coordinator = ExportPrivateKeyCoordinator(
-                    navigationController: self.navigationController,
-                    keystore: self.keystore,
-                    account: account
-                )
-                coordinator.delegate = self
-                coordinator.start()
-                self.addCoordinator(coordinator)
+                self.exportPrivateKey(for: account)
             }
             controller.addAction(backupKeystoreAction)
             controller.addAction(exportPrivateKeyAction)
-        case .watch:
+        case .hd, .address:
             break
         }
 
@@ -110,6 +101,17 @@ class AccountsCoordinator: Coordinator {
         controller.addAction(copyAction)
         controller.addAction(cancelAction)
         navigationController.present(controller, animated: true, completion: nil)
+    }
+
+    func exportPrivateKey(for account: Account) {
+        let coordinator = ExportPrivateKeyCoordinator(
+            keystore: keystore,
+            account: account
+        )
+        coordinator.delegate = self
+        coordinator.start()
+        addCoordinator(coordinator)
+        navigationController.present(coordinator.navigationController, animated: true, completion: nil)
     }
 }
 
@@ -151,7 +153,7 @@ extension AccountsCoordinator: BackupCoordinatorDelegate {
         removeCoordinator(coordinator)
     }
 
-    func didFinish(account: Account, in coordinator: BackupCoordinator) {
+    func didFinish(wallet: Wallet, in coordinator: BackupCoordinator) {
         removeCoordinator(coordinator)
     }
 }

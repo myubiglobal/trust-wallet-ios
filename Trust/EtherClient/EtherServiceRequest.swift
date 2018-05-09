@@ -9,9 +9,16 @@ struct EtherServiceRequest<Batch: JSONRPCKit.Batch>: APIKit.Request {
 
     typealias Response = Batch.Responses
 
+    var timeoutInterval: Double
+
+    init(batch: Batch, timeoutInterval: Double = 30.0) {
+        self.batch = batch
+        self.timeoutInterval = timeoutInterval
+    }
+
     var baseURL: URL {
         let config = Config()
-        return config.rpcURL
+        return config.server.rpcURL
     }
 
     var method: HTTPMethod {
@@ -24,6 +31,12 @@ struct EtherServiceRequest<Batch: JSONRPCKit.Batch>: APIKit.Request {
 
     var parameters: Any? {
         return batch.requestObject
+    }
+
+    func intercept(urlRequest: URLRequest) throws -> URLRequest {
+        var urlRequest = urlRequest
+        urlRequest.timeoutInterval = timeoutInterval
+        return urlRequest
     }
 
     func response(from object: Any, urlResponse: HTTPURLResponse) throws -> Response {

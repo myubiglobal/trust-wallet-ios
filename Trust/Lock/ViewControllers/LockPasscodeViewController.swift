@@ -18,11 +18,10 @@ class LockPasscodeViewController: UIViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardWillShow), name: .UIKeyboardWillShow, object: nil)
         self.view.backgroundColor = UIColor.white
         self.configureInvisiblePasscodeField()
-        self.configureNavigationItems()
         self.configureLockView()
     }
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
         if !invisiblePasscodeField.isFirstResponder && !lock.incorrectMaxAttemptTimeIsSet() {
             invisiblePasscodeField.becomeFirstResponder()
         }
@@ -41,9 +40,7 @@ class LockPasscodeViewController: UIViewController {
         invisiblePasscodeField.addTarget(self, action: #selector(textFieldDidChange(_:)), for: .editingChanged)
         view.addSubview(invisiblePasscodeField)
     }
-    private func configureNavigationItems() {
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: NSLocalizedString("Cancel", value: "Cancel", comment: ""), style: .plain, target: self, action: #selector(self.userTappedCancel))
-    }
+
     private func configureLockView() {
         lockView = LockView(model)
         lockView.translatesAutoresizingMaskIntoConstraints = false
@@ -53,12 +50,7 @@ class LockPasscodeViewController: UIViewController {
         lockView.bottomAnchor.constraint(equalTo: self.view.bottomAnchor).isActive = true
         lockView.topAnchor.constraint(equalTo: self.view.topAnchor).isActive = true
     }
-    @objc func userTappedCancel() {
-        if let finish = willFinishWithResult {
-            finish(false)
-        }
-        dismiss(animated: true, completion: nil)
-    }
+
     @objc func enteredPasscode(_ passcode: String) {
         shouldIgnoreTextFieldDelegateCalls = false
         clearPasscode()

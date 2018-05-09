@@ -6,8 +6,19 @@ import WebKit
 import JavaScriptCore
 import Result
 
+enum BrowserAction {
+    case history
+    case addBookmark(bookmark: Bookmark)
+    case bookmarks
+    case qrCode
+    case changeURL(URL)
+    case navigationAction(BrowserNavigation)
+}
+
 protocol BrowserViewControllerDelegate: class {
     func didCall(action: DappAction, callbackID: Int)
+    func runAction(action: BrowserAction)
+    func didVisitURL(url: URL, title: String)
 }
 
 class BrowserViewController: UIViewController {
@@ -20,7 +31,12 @@ class BrowserViewController: UIViewController {
         static let estimatedProgress = "estimatedProgress"
         static let developerExtrasEnabled = "developerExtrasEnabled"
         static let URL = "URL"
+        static let ClientName = "Trust"
     }
+
+    private lazy var userClient: String = {
+        return Keys.ClientName + "/" + (Bundle.main.versionNumber ?? "")
+    }()
 
     lazy var webView: WKWebView = {
         let webView = WKWebView(
@@ -28,24 +44,38 @@ class BrowserViewController: UIViewController {
             configuration: self.config
         )
         webView.allowsBackForwardNavigationGestures = true
+        webView.translatesAutoresizingMaskIntoConstraints = false
         webView.navigationDelegate = self
-        webView.uiDelegate = self
         if isDebug {
             webView.configuration.preferences.setValue(true, forKey: Keys.developerExtrasEnabled)
         }
         return webView
     }()
+
+    lazy var errorView: BrowserErrorView = {
+        let errorView = BrowserErrorView()
+        errorView.translatesAutoresizingMaskIntoConstraints = false
+        errorView.delegate = self
+        return errorView
+    }()
+
     weak var delegate: BrowserViewControllerDelegate?
-    let decoder = JSONDecoder()
-    private let urlParser = BrowserURLParser()
 
     var browserNavBar: BrowserNavigationBar? {
         return navigationController?.navigationBar as? BrowserNavigationBar
     }
-    let progressView = UIProgressView(progressViewStyle: .default)
 
+    lazy var progressView: UIProgressView = {
+        let progressView = UIProgressView(progressViewStyle: .default)
+        progressView.translatesAutoresizingMaskIntoConstraints = false
+        progressView.tintColor = Colors.darkBlue
+        progressView.trackTintColor = .clear
+        return progressView
+    }()
+
+    //Take a look at this issue : https://stackoverflow.com/questions/26383031/wkwebview-causes-my-view-controller-to-leak
     lazy var config: WKWebViewConfiguration = {
-        return WKWebViewConfiguration.make(for: account, with: sessionConfig, in: self)
+        return WKWebViewConfiguration.make(for: account, with: sessionConfig, in: ScriptMessageProxy(delegate: self))
     }()
 
     init(
@@ -57,13 +87,12 @@ class BrowserViewController: UIViewController {
 
         super.init(nibName: nil, bundle: nil)
 
-        webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
+        injectUserAgent()
 
-        progressView.translatesAutoresizingMaskIntoConstraints = false
-        progressView.tintColor = Colors.darkBlue
         webView.addSubview(progressView)
         webView.bringSubview(toFront: progressView)
+        view.addSubview(errorView)
 
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: topLayoutGuide.bottomAnchor),
@@ -74,12 +103,16 @@ class BrowserViewController: UIViewController {
             progressView.topAnchor.constraint(equalTo: view.layoutGuide.topAnchor),
             progressView.leadingAnchor.constraint(equalTo: webView.leadingAnchor),
             progressView.trailingAnchor.constraint(equalTo: webView.trailingAnchor),
-            progressView.heightAnchor.constraint(equalToConstant: 3),
+            progressView.heightAnchor.constraint(equalToConstant: 2),
+
+            errorView.topAnchor.constraint(equalTo: webView.topAnchor),
+            errorView.leadingAnchor.constraint(equalTo: webView.leadingAnchor),
+            errorView.trailingAnchor.constraint(equalTo: webView.trailingAnchor),
+            errorView.bottomAnchor.constraint(equalTo: webView.bottomAnchor),
         ])
         view.backgroundColor = .white
         webView.addObserver(self, forKeyPath: Keys.estimatedProgress, options: .new, context: &myContext)
         webView.addObserver(self, forKeyPath: Keys.URL, options: [.new, .initial], context: &myContext)
-        goHome()
     }
 
     required init?(coder aDecoder: NSCoder) {
@@ -90,7 +123,14 @@ class BrowserViewController: UIViewController {
         super.viewWillAppear(animated)
 
         browserNavBar?.browserDelegate = self
-        reloadButtons()
+        refreshURL()
+    }
+
+    private func injectUserAgent() {
+        webView.evaluateJavaScript("navigator.userAgent") { [weak self] result, _ in
+            guard let `self` = self, let currentUserAgent = result as? String else { return }
+            self.webView.customUserAgent = currentUserAgent + " " + self.userClient
+        }
     }
 
     func goTo(url: URL) {
@@ -106,17 +146,20 @@ class BrowserViewController: UIViewController {
                 return "executeCallback(\(callbackID), \"\(error)\", null)"
             }
         }()
-        NSLog("script \(script)")
-        self.webView.evaluateJavaScript(script, completionHandler: nil)
+        webView.evaluateJavaScript(script, completionHandler: nil)
     }
 
-    private func goHome() {
+    func goHome() {
         guard let url = URL(string: Constants.dappsBrowserURL) else { return }
-        webView.load(URLRequest(url: url))
+        var request = URLRequest(url: url)
+        request.cachePolicy = .returnCacheDataElseLoad
+        hideErrorView()
+        webView.load(request)
         browserNavBar?.textField.text = url.absoluteString
     }
 
-    private func reload() {
+    func reload() {
+        hideErrorView()
         webView.reload()
     }
 
@@ -126,11 +169,24 @@ class BrowserViewController: UIViewController {
 
     private func refreshURL() {
         browserNavBar?.textField.text = webView.url?.absoluteString
+        browserNavBar?.backButton.isHidden = !webView.canGoBack
+
     }
 
-    private func reloadButtons() {
-        browserNavBar?.goBack.isEnabled = webView.canGoBack
-        browserNavBar?.goForward.isEnabled = webView.canGoForward
+    private func recordURL() {
+        guard let url = webView.url else {
+            return
+        }
+        delegate?.didVisitURL(url: url, title: webView.title ?? "")
+    }
+
+    private func changeURL(_ url: URL) {
+        delegate?.runAction(action: .changeURL(url))
+        refreshURL()
+    }
+
+    private func hideErrorView() {
+        errorView.isHidden = true
     }
 
     override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
@@ -147,6 +203,7 @@ class BrowserViewController: UIViewController {
         } else if keyPath == Keys.URL {
             if let url = webView.url {
                 self.browserNavBar?.textField.text = url.absoluteString
+                changeURL(url)
             }
         }
     }
@@ -156,86 +213,60 @@ class BrowserViewController: UIViewController {
         webView.removeObserver(self, forKeyPath: Keys.URL)
     }
 
-    private func presentMoreOptions(sender: UIView) {
-        let alertController = makeMoreAlertSheet(sender: sender)
-        present(alertController, animated: true, completion: nil)
+    func addBookmark() {
+        guard let url = webView.url?.absoluteString else { return }
+        guard let title = webView.title else { return }
+        delegate?.runAction(action: .addBookmark(bookmark: Bookmark(url: url, title: title)))
     }
 
-    private func makeMoreAlertSheet(sender: UIView) -> UIAlertController {
-        let alertController = UIAlertController(
-            title: nil,
-            message: nil,
-            preferredStyle: .actionSheet
-        )
-        alertController.popoverPresentationController?.sourceView = sender
-        alertController.popoverPresentationController?.sourceRect = sender.centerRect
-        let homeAction = UIAlertAction(title: NSLocalizedString("browser.home.button.title", value: "Home", comment: ""), style: .default) { [unowned self] _ in
-            self.goHome()
-        }
-        let reloadAction = UIAlertAction(title: NSLocalizedString("browser.reload.button.title", value: "Reload", comment: ""), style: .default) { [unowned self] _ in
-            self.reload()
-        }
-        let shareAction = UIAlertAction(title: NSLocalizedString("browser.share.button.title", value: "Share", comment: ""), style: .default) { [unowned self] _ in
-            self.share()
-        }
-        let cancelAction = UIAlertAction(title: NSLocalizedString("Cancel", value: "Cancel", comment: ""), style: .cancel) { _ in }
-
-        alertController.addAction(homeAction)
-        alertController.addAction(reloadAction)
-        alertController.addAction(shareAction)
-        alertController.addAction(cancelAction)
-        return alertController
+    @objc private func showBookmarks() {
+        delegate?.runAction(action: .bookmarks)
     }
 
-    private func makeShareController(url: URL) -> UIActivityViewController {
-        return UIActivityViewController(activityItems: [url], applicationActivities: nil)
-    }
-
-    private func share() {
-        guard let url = webView.url else { return }
-        guard let navigationController = navigationController else { return }
-        let controller = makeShareController(url: url)
-        controller.popoverPresentationController?.sourceView = navigationController.view
-        controller.popoverPresentationController?.sourceRect = navigationController.view.centerRect
-        navigationController.present(controller, animated: true, completion: nil)
+    @objc private func history() {
+        delegate?.runAction(action: .history)
     }
 
     func handleError(error: Error) {
         if error.code == NSURLErrorCancelled {
             return
         } else {
-            displayError(error: error)
+            if error.domain == NSURLErrorDomain,
+                let failedURL = (error as NSError).userInfo[NSURLErrorFailingURLErrorKey] as? URL {
+                changeURL(failedURL)
+            }
+            errorView.show(error: error)
         }
     }
 }
 
 extension BrowserViewController: BrowserNavigationBarDelegate {
-    func did(action: BrowserAction) {
+    func did(action: BrowserNavigation) {
+        delegate?.runAction(action: .navigationAction(action))
         switch action {
-        case .goForward:
-            webView.goForward()
         case .goBack:
-            webView.goBack()
-        case .more(let sender):
-            presentMoreOptions(sender: sender)
-        case .enter(let string):
-            guard let url = urlParser.url(from: string) else { return }
-            goTo(url: url)
+            break
+        case .more:
+            break
+        case .home:
+            break
+        case .enter:
+            break
         case .beginEditing:
             stopLoading()
         }
-        reloadButtons()
     }
 }
 
 extension BrowserViewController: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        recordURL()
+        hideErrorView()
         refreshURL()
-        reloadButtons()
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        reloadButtons()
+        hideErrorView()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -247,25 +278,18 @@ extension BrowserViewController: WKNavigationDelegate {
     }
 }
 
-extension BrowserViewController: WKUIDelegate {
-    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if navigationAction.targetFrame == nil {
-            webView.load(navigationAction.request)
-        }
-        return nil
+extension BrowserViewController: WKScriptMessageHandler {
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let command = DappAction.fromMessage(message) else { return }
+        let requester = DAppRequester(title: webView.title, url: webView.url)
+        let action = DappAction.fromCommand(command, requester: requester)
+
+        delegate?.didCall(action: action, callbackID: command.id)
     }
 }
 
-extension BrowserViewController: WKScriptMessageHandler {
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-
-        guard let body = message.body as? [String: AnyObject],
-            let jsonString = body.jsonString,
-            let command = try? decoder.decode(DappCommand.self, from: jsonString.data(using: .utf8)!) else {
-                return
-        }
-        let action = DappAction.fromCommand(command)
-
-        delegate?.didCall(action: action, callbackID: command.id)
+extension BrowserViewController: BrowserErrorViewDelegate {
+    func didTapReload(_ sender: Button) {
+        reload()
     }
 }

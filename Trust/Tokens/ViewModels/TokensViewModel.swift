@@ -3,24 +3,24 @@
 import Foundation
 import UIKit
 import RealmSwift
+import TrustCore
+import PromiseKit
 
-enum TokenItem {
-    case token(TokenObject)
+protocol TokensViewModelDelegate: class {
+    func refresh()
 }
 
-struct TokensViewModel {
+class TokensViewModel: NSObject {
     let config: Config
 
     let store: TokensDataStore
-
-    var tokensNetwork: TokensNetworkProtocol
-
+    var tokensNetwork: NetworkProtocol
     let tokens: Results<TokenObject>
-
     var tokensObserver: NotificationToken?
+    let address: Address
 
-    var headerBalance: String? {
-        return amount
+    var headerBalance: String {
+        return amount ?? "0.00"
     }
 
     var headerBalanceTextColor: UIColor {
@@ -28,15 +28,15 @@ struct TokensViewModel {
     }
 
     var headerBackgroundColor: UIColor {
-        return .white
+        return Colors.veryVeryLightGray
     }
 
     var headerBalanceFont: UIFont {
-        return UIFont.systemFont(ofSize: 26, weight: .medium)
+        return UIFont.systemFont(ofSize: 28, weight: .medium)
     }
 
     var title: String {
-        return NSLocalizedString("tokens.navigation.title", value: "Tokens", comment: "")
+        return NSLocalizedString("wallet.navigation.title", value: "Wallet", comment: "")
     }
 
     var backgroundColor: UIColor {
@@ -48,7 +48,7 @@ struct TokensViewModel {
     }
 
     var footerTitle: String {
-        return NSLocalizedString("tokens.footer.label.title", value: "Tokens will appear automagically. + to add manually.", comment: "")
+        return NSLocalizedString("tokens.footer.label.title", value: "Tokens will appear automagically. Tap + to add manually.", comment: "")
     }
 
     var footerTextColor: UIColor {
@@ -59,35 +59,35 @@ struct TokensViewModel {
         return UIFont.systemFont(ofSize: 13, weight: .light)
     }
 
+    weak var delegate: TokensViewModelDelegate?
+
     init(
         config: Config = Config(),
+        address: Address,
         store: TokensDataStore,
-        tokensNetwork: TokensNetworkProtocol
+        tokensNetwork: NetworkProtocol
     ) {
         self.config = config
+        self.address = address
         self.store = store
         self.tokensNetwork = tokensNetwork
         self.tokens = store.tokens
-        updateEthBalance()
-        updateTokensBalances()
-        updateTickers()
+        super.init()
     }
 
-    mutating func setTokenObservation(with block: @escaping (RealmCollectionChange<Results<TokenObject>>) -> Void) {
+    func setTokenObservation(with block: @escaping (RealmCollectionChange<Results<TokenObject>>) -> Void) {
         tokensObserver = tokens.observe(block)
     }
 
     private var amount: String? {
-        var totalAmount: Double = 0
-        tokens.forEach { token in
-            totalAmount += amount(for: token)
-        }
-        guard totalAmount != 0 else { return "--" }
+        let totalAmount = tokens.lazy.flatMap { [weak self] in
+            self?.amount(for: $0)
+        }.reduce(0, +)
         return CurrencyFormatter.formatter.string(from: NSNumber(value: totalAmount))
     }
 
     private func amount(for token: TokenObject) -> Double {
-        guard let tickersSymbol = store.tickers.first(where: { $0.contract == token.contract }) else { return 0 }
+        guard let tickersSymbol = store.tickers().first(where: { $0.contract == token.contract }) else { return 0 }
         let tokenValue = CurrencyFormatter.plainFormatter.string(from: token.valueBigInt, decimals: token.decimals).doubleValue
         let price = Double(tickersSymbol.price) ?? 0
         return tokenValue * price
@@ -97,16 +97,16 @@ struct TokensViewModel {
         return tokens.count
     }
 
-    func item(for path: IndexPath) -> TokenItem {
-        return .token(tokens[path.row])
+    func item(for path: IndexPath) -> TokenObject {
+        return tokens[path.row]
     }
 
     func canEdit(for path: IndexPath) -> Bool {
-        let token = item(for: path)
-        switch token {
-        case .token(let token):
-            return token.isCustom
-        }
+        return tokens[path.row].isCustom
+    }
+
+    func canDisable(for path: IndexPath) -> Bool {
+        return item(for: path) != TokensDataStore.etherToken()
     }
 
     func cellViewModel(for path: IndexPath) -> TokenViewCellViewModel {
@@ -114,32 +114,72 @@ struct TokensViewModel {
         return TokenViewCellViewModel(token: token, ticker: store.coinTicker(for: token))
     }
 
-    func updateTickers() {
-        tokensNetwork.tickers(for: store.enabledObject) { result in
-            guard let tickers = result else { return }
-            self.store.tickers = tickers
-        }
-    }
-
     func updateEthBalance() {
-        tokensNetwork.ethBalance { result in
-            guard let balance = result, let token = self.store.objects.first (where: { $0.name == self.config.server.name })  else { return }
-            self.store.update(token: token, action: .updateValue(balance.value))
+        firstly {
+            tokensNetwork.ethBalance()
+        }.done { [weak self] balance in
+            self?.store.update(balances: [TokensDataStore.etherToken().address: balance.value])
+        }.catch { error in
+           Analytics.track(.failedTrustRequest(error))
         }
     }
 
-    func updateTokensBalances() {
-        store.enabledObject.filter { $0.name != self.config.server.name }.forEach { token in
-            tokensNetwork.tokenBalance(for: token) { result in
-                guard let balance = result.1 else { return }
-                self.store.update(token: result.0, action: TokenAction.updateValue(balance.value))
-            }
+    private func tokensInfo() {
+        firstly {
+            tokensNetwork.tokensList(for: address)
+        }.done { [weak self] tokens in
+             self?.store.update(tokens: tokens, action: .updateInfo)
+        }.catch { error in
+            Analytics.track(.failedTrustRequest(error))
+        }.finally { [weak self] in
+            guard let strongSelf = self else { return }
+            let tokens = strongSelf.store.objects
+            let enabledTokens = strongSelf.store.enabledObject
+            strongSelf.prices(for: tokens)
+            strongSelf.balances(for: enabledTokens)
         }
+    }
+
+    private func prices(for tokens: [TokenObject]) {
+        let prices = tokens.map { TokenPrice(contract: $0.contract, symbol: $0.symbol) }
+        firstly {
+            tokensNetwork.tickers(with: prices)
+        }.done { [weak self] tickers in
+            self?.store.saveTickers(tickers: tickers)
+        }.catch { error in
+            Analytics.track(.failedTrustRequest(error))
+        }.finally { [weak self] in
+            self?.delegate?.refresh()
+        }
+    }
+
+    private func balances(for tokens: [TokenObject]) {
+
+        let operationQueue: OperationQueue = OperationQueue()
+        operationQueue.qualityOfService = .background
+
+        let balancesOperations = Array(tokens.lazy.map { TokenBalanceOperation(network: self.tokensNetwork, address: $0.address, store: self.store) })
+        operationQueue.addOperations(balancesOperations, waitUntilFinished: false)
     }
 
     func fetch() {
-        updateTickers()
-        updateEthBalance()
-        updateTokensBalances()
+        tokensInfo()
+    }
+
+    func invalidateTokensObservation() {
+        tokensObserver?.invalidate()
+        tokensObserver = nil
+    }
+}
+
+extension Array where Element: Operation {
+    /// Execute block after all operations from the array.
+    func onFinish(block: @escaping () -> Void) {
+        let doneOperation = BlockOperation(block: block)
+        self.forEach { [unowned doneOperation] in
+            doneOperation.addDependency($0)
+
+        }
+        OperationQueue().addOperation(doneOperation)
     }
 }

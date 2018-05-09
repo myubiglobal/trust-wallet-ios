@@ -2,56 +2,61 @@
 
 import Foundation
 import RealmSwift
-import TrustKeystore
+import TrustCore
+
+struct TransactionSection {
+    let title: String
+    let items: [Transaction]
+}
 
 class TransactionsStorage {
 
     let realm: Realm
 
+    var transactionsUpdateHandler: () -> Void = {}
+
+    var transactions: Results<Transaction> {
+        return realm.objects(Transaction.self).filter(NSPredicate(format: "id!=''")).sorted(byKeyPath: "date", ascending: false)
+    }
+    var latestTransaction: Transaction? {
+        return realm.objects(Transaction.self)
+            .filter(NSPredicate(format: "from == %@", account.address.description))
+            .sorted(byKeyPath: "nonce", ascending: false)
+            .first
+    }
+
+    var transactionSections: [TransactionSection] = []
+
+    private var transactionsObserver: NotificationToken?
+    let account: Wallet
     init(
-        realm: Realm
+        realm: Realm,
+        account: Wallet
     ) {
         self.realm = realm
-    }
-
-    var count: Int {
-        return objects.count
-    }
-
-    var objects: [Transaction] {
-        return realm.objects(Transaction.self)
-            .sorted(byKeyPath: "date", ascending: false)
-            .filter { !$0.id.isEmpty }
+        self.account = account
     }
 
     var completedObjects: [Transaction] {
-        return objects.filter { $0.state == .completed }
+        return transactions.filter { $0.state == .completed }
     }
 
     var pendingObjects: [Transaction] {
-        return objects.filter { $0.state == TransactionState.pending }
+        return transactions.filter { $0.state == TransactionState.pending }
     }
 
     func get(forPrimaryKey: String) -> Transaction? {
         return realm.object(ofType: Transaction.self, forPrimaryKey: forPrimaryKey)
     }
 
-    @discardableResult
-    func add(_ items: [Transaction]) -> [Transaction] {
-        realm.beginWrite()
-        realm.add(items, update: true)
-        try! realm.commitWrite()
-
-        // store contract addresses associated with transactions
-        let tokens = self.tokens(from: items)
-        if !tokens.isEmpty {
-            TokensDataStore.update(in: realm, tokens: tokens)
+    func add(_ items: [Transaction]) {
+        try! realm.write {
+            realm.add(items, update: true)
         }
-        return items
     }
 
     private func tokens(from transactions: [Transaction]) -> [Token] {
-        let tokens: [Token] = transactions.flatMap { transaction in
+        let tokens: [Token] = transactions.compactMap { transaction in
             guard
                 let operation = transaction.localizedOperations.first,
                 let contract = Address(string: operation.contract ?? ""),
@@ -74,12 +79,12 @@ class TransactionsStorage {
         }
     }
 
-    @discardableResult
-    func update(state: TransactionState, for transaction: Transaction) -> Transaction {
-        realm.beginWrite()
-        transaction.internalState = state.rawValue
-        try! realm.commitWrite()
-        return transaction
+    func update(state: TransactionState, for transaction: Transaction) {
+        try! realm.write {
+            let tempObject = transaction
+            tempObject.internalState = state.rawValue
+            realm.add(tempObject, update: true)
+        }
     }
 
     func removeTransactions(for states: [TransactionState]) {
@@ -93,5 +98,34 @@ class TransactionsStorage {
         try! realm.write {
             realm.delete(realm.objects(Transaction.self))
         }
+    }
+
+    func updateTransactionSection() {
+        transactionSections = mappedSections(for: Array(transactions))
+    }
+
+    func mappedSections(for transactions: [Transaction]) -> [TransactionSection] {
+        var items = [TransactionSection]()
+        let headerDates = NSOrderedSet(array: transactions.map { TransactionsViewModel.titleFormmater.string(from: $0.date ) })
+        headerDates.forEach {
+            guard let dateKey = $0 as? String else {
+                return
+            }
+            let filteredTransactionByDate = Array(transactions.filter { TransactionsViewModel.titleFormmater.string(from: $0.date ) == dateKey })
+            items.append(TransactionSection(title: dateKey, items: filteredTransactionByDate))
+        }
+        return items
+    }
+
+    func transactionsObservation() {
+        transactionsObserver = transactions.observe { [weak self] _ in
+            self?.updateTransactionSection()
+            self?.transactionsUpdateHandler()
+        }
+    }
+
+    func invalidateTransactionsObservation() {
+        transactionsObserver?.invalidate()
+        transactionsObserver = nil
     }
 }

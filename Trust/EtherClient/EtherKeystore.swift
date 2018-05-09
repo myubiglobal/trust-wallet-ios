@@ -5,6 +5,7 @@ import Foundation
 import Result
 import KeychainSwift
 import CryptoSwift
+import TrustCore
 import TrustKeystore
 
 enum EtherKeystoreError: LocalizedError {
@@ -14,31 +15,28 @@ enum EtherKeystoreError: LocalizedError {
 open class EtherKeystore: Keystore {
     struct Keys {
         static let recentlyUsedAddress: String = "recentlyUsedAddress"
+        static let recentlyUsedWallet: String = "recentlyUsedWallet"
         static let watchAddresses = "watchAddresses"
     }
+
+    static let shared = EtherKeystore()
 
     private let keychain: KeychainSwift
     private let datadir = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
     let keyStore: KeyStore
     private let defaultKeychainAccess: KeychainSwiftAccessOptions = .accessibleWhenUnlockedThisDeviceOnly
     let keysDirectory: URL
-    let walletsDirectory: URL
     let userDefaults: UserDefaults
 
     public init(
         keychain: KeychainSwift = KeychainSwift(keyPrefix: Constants.keychainKeyPrefix),
         keysSubfolder: String = "/keystore",
-        walletsSubfolder: String = "/wallets",
         userDefaults: UserDefaults = UserDefaults.standard
-    ) throws {
-        if !UIApplication.shared.isProtectedDataAvailable {
-            throw EtherKeystoreError.protectionDisabled
-        }
+    ) {
         self.keysDirectory = URL(fileURLWithPath: datadir + keysSubfolder)
-        self.walletsDirectory = URL(fileURLWithPath: datadir + walletsSubfolder)
         self.keychain = keychain
         self.keychain.synchronizable = false
-        self.keyStore = try KeyStore(keyDirectory: keysDirectory, walletDirectory: walletsDirectory)
+        self.keyStore = try! KeyStore(keyDirectory: keysDirectory)
         self.userDefaults = userDefaults
     }
 
@@ -59,22 +57,24 @@ open class EtherKeystore: Keystore {
 
     var recentlyUsedWallet: Wallet? {
         set {
-            keychain.set(newValue?.address.description ?? "", forKey: Keys.recentlyUsedAddress, withAccess: defaultKeychainAccess)
+            keychain.set(newValue?.description ?? "", forKey: Keys.recentlyUsedWallet, withAccess: defaultKeychainAccess)
         }
         get {
-            let address = keychain.get(Keys.recentlyUsedAddress)
-            return wallets.filter {
-                $0.address.description == address || $0.address.description.lowercased() == address?.lowercased()
-            }.first
+            let walletKey = keychain.get(Keys.recentlyUsedWallet)
+            let foundWallet = wallets.filter { $0.description == walletKey }.first
+            guard let wallet = foundWallet else {
+                // Old way to match recently selected address
+                let address = keychain.get(Keys.recentlyUsedAddress)
+                return wallets.filter {
+                    $0.address.description == address || $0.address.description.lowercased() == address?.lowercased()
+                }.first
+            }
+            return wallet
         }
     }
 
     static var current: Wallet? {
-        do {
-            return try EtherKeystore().recentlyUsedWallet
-        } catch {
-            return .none
-        }
+        return EtherKeystore.shared.recentlyUsedWallet
     }
 
     // Async
@@ -99,7 +99,7 @@ open class EtherKeystore: Keystore {
             ) { result in
                 switch result {
                 case .success(let account):
-                    completion(.success(Wallet(type: .real(account))))
+                    completion(.success(Wallet(type: .privateKey(account))))
                 case .failure(let error):
                     completion(.failure(error))
                 }
@@ -115,7 +115,7 @@ open class EtherKeystore: Keystore {
                     ) { result in
                         switch result {
                         case .success(let account):
-                            completion(.success(Wallet(type: .real(account))))
+                            completion(.success(Wallet(type: .privateKey(account))))
                         case .failure(let error):
                             completion(.failure(error))
                         }
@@ -124,27 +124,17 @@ open class EtherKeystore: Keystore {
                     completion(.failure(error))
                 }
             }
-        case .mnemonic:
-            let key = ""
-            // TODO: Implement it
-            keystore(for: key, password: newPassword) { result in
-                switch result {
-                case .success(let value):
-                    self.importKeystore(
-                        value: value,
-                        password: newPassword,
-                        newPassword: newPassword
-                    ) { result in
-                        switch result {
-                        case .success(let account):
-                            completion(.success(Wallet(type: .real(account))))
-                        case .failure(let error):
-                            completion(.failure(error))
-                        }
-                    }
-                case .failure(let error):
-                    completion(.failure(error))
-                }
+        case .mnemonic(let words, let passphrase):
+            let string = words.map { String($0) }.joined(separator: " ")
+            if !Mnemonic.isValid(string) {
+                return completion(.failure(KeystoreError.invalidMnemonicPhrase))
+            }
+            do {
+                let account = try keyStore.import(mnemonic: string, passphrase: passphrase, encryptPassword: newPassword)
+                setPassword(newPassword, for: account)
+                completion(.success(Wallet(type: .hd(account))))
+            } catch {
+                return completion(.failure(KeystoreError.duplicateAccount))
             }
         case .watch(let address):
             let addressString = address.description
@@ -152,7 +142,7 @@ open class EtherKeystore: Keystore {
                 return completion(.failure(.duplicateAccount))
             }
             self.watchAddresses = [watchAddresses, [addressString]].flatMap { $0 }
-            completion(.success(Wallet(type: .watch(address))))
+            completion(.success(Wallet(type: .address(address))))
         }
     }
 
@@ -211,10 +201,15 @@ open class EtherKeystore: Keystore {
     }
 
     var wallets: [Wallet] {
-        let addresses = watchAddresses.flatMap { Address(string: $0) }
+        let addresses = watchAddresses.compactMap { Address(string: $0) }
         return [
-            keyStore.accounts.map { Wallet(type: .real($0)) },
-            addresses.map { Wallet(type: .watch($0)) },
+            keyStore.accounts.map {
+                switch $0.type {
+                case .encryptedKey: return Wallet(type: .privateKey($0))
+                case .hierarchicalDeterministicWallet: return Wallet(type: .hd($0))
+                }
+            },
+            addresses.map { Wallet(type: .address($0)) },
         ].flatMap { $0 }
     }
 
@@ -266,11 +261,7 @@ open class EtherKeystore: Keystore {
 
     func delete(wallet: Wallet) -> Result<Void, KeystoreError> {
         switch wallet.type {
-        case .real(let account):
-            guard let account = getAccount(for: account.address) else {
-                return .failure(.accountNotFound)
-            }
-
+        case .privateKey(let account), .hd(let account):
             guard let password = getPassword(for: account) else {
                 return .failure(.failedToDeleteAccount)
             }
@@ -281,7 +272,7 @@ open class EtherKeystore: Keystore {
             } catch {
                 return .failure(.failedToDeleteAccount)
             }
-        case .watch(let address):
+        case .address(let address):
             watchAddresses = watchAddresses.filter { $0 != address.description }
             return .success(())
         }
@@ -309,14 +300,20 @@ open class EtherKeystore: Keystore {
         }
     }
 
-    func signPersonalMessage(_ data: Data, for account: Account) -> Result<Data, KeystoreError> {
-        let message = String(data: data, encoding: .utf8)!
-        let formattedMessage: String = "\u{19}Ethereum Signed Message:\n" + "\(message.count)" + message
-        return signMessage(formattedMessage.data(using: .utf8)!, for: account)
+    func signPersonalMessage(_ message: Data, for account: Account) -> Result<Data, KeystoreError> {
+        let prefix = "\u{19}Ethereum Signed Message:\n\(message.count)".data(using: .utf8)!
+        return signMessage(prefix + message, for: account)
     }
 
     func signMessage(_ message: Data, for account: Account) -> Result<Data, KeystoreError> {
         return signHash(message.sha3(.keccak256), for: account)
+    }
+
+    func signTypedMessage(_ datas: [EthTypedData], for account: Account) -> Result<Data, KeystoreError> {
+        let schemas = datas.map { $0.schemaData }.reduce(Data(), { $0 + $1 }).sha3(.keccak256)
+        let values = datas.map { $0.typedData }.reduce(Data(), { $0 + $1 }).sha3(.keccak256)
+        let combined = (schemas + values).sha3(.keccak256)
+        return signHash(combined, for: account)
     }
 
     func signHash(_ hash: Data, for account: Account) -> Result<Data, KeystoreError> {
@@ -335,13 +332,10 @@ open class EtherKeystore: Keystore {
     }
 
     func signTransaction(_ transaction: SignTransaction) -> Result<Data, KeystoreError> {
-        guard let account = keyStore.account(for: transaction.account.address) else {
-            return .failure(.failedToSignTransaction)
-        }
+        let account = transaction.account
         guard let password = getPassword(for: account) else {
             return .failure(.failedToSignTransaction)
         }
-
         let signer: Signer
         if transaction.chainID == 0 {
             signer = HomesteadSigner()
@@ -369,12 +363,21 @@ open class EtherKeystore: Keystore {
     }
 
     func getPassword(for account: Account) -> String? {
-        return keychain.get(account.address.description.lowercased())
+        return keychain.get(keychainKey(for: account))
     }
 
     @discardableResult
     func setPassword(_ password: String, for account: Account) -> Bool {
-        return keychain.set(password, forKey: account.address.description.lowercased(), withAccess: defaultKeychainAccess)
+        return keychain.set(password, forKey: keychainKey(for: account), withAccess: defaultKeychainAccess)
+    }
+
+    internal func keychainKey(for account: Account) -> String {
+        switch account.type {
+        case .encryptedKey:
+            return account.address.description.lowercased()
+        case .hierarchicalDeterministicWallet:
+            return "hd-wallet-" + account.address.description
+        }
     }
 
     func getAccount(for address: Address) -> Account? {

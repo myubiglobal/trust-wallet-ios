@@ -2,7 +2,7 @@
 
 import UIKit
 import Eureka
-import TrustKeystore
+import TrustCore
 import QRCodeReaderViewController
 
 protocol ImportWalletViewControllerDelegate: class {
@@ -22,34 +22,22 @@ class ImportWalletViewController: FormViewController {
         static let watch = "watch"
         static let mnemonic = "mnemonic"
     }
-    
-    lazy var pargraphStyle: NSMutableParagraphStyle = {
-        let style = NSMutableParagraphStyle()
-        style.lineHeightMultiple = 1.25
-        style.alignment = .natural
-        return style
-    }()
 
     var segmentRow: SegmentedRow<String>? {
         return form.rowBy(tag: Values.segment)
     }
-
     var keystoreRow: TextAreaRow? {
         return form.rowBy(tag: Values.keystore)
     }
-
     var mnemonicRow: TextAreaRow? {
         return form.rowBy(tag: Values.mnemonic)
     }
-
     var privateKeyRow: TextAreaRow? {
         return form.rowBy(tag: Values.privateKey)
     }
-
     var passwordRow: TextFloatLabelRow? {
         return form.rowBy(tag: Values.password)
     }
-
     var watchRow: TextFloatLabelRow? {
         return form.rowBy(tag: Values.watch)
     }
@@ -73,7 +61,7 @@ class ImportWalletViewController: FormViewController {
         ]
 
         if UserDefaults.standard.bool(forKey: "FASTLANE_SNAPSHOT") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                 self.demo()
             }
         }
@@ -88,11 +76,9 @@ class ImportWalletViewController: FormViewController {
                 var header = HeaderFooterView<InfoHeaderView>(.class)
                 header.height = { 90 }
                 header.onSetupView = { (view, section) -> Void in
-                    view.label.attributedText = NSAttributedString(string: "Importing wallet as easy as creating", attributes: [
-                        NSAttributedStringKey.font: UIFont.systemFont(ofSize: 14, weight: UIFont.Weight.regular),
-                        NSAttributedStringKey.foregroundColor: UIColor(hex: "6e6e72"),
-                        NSAttributedStringKey.paragraphStyle: self.pargraphStyle,
-                        ])
+                    view.label.textColor = AppStyle.formHeader.textColor
+                    view.label.font = AppStyle.formHeader.font
+                    view.label.text = NSLocalizedString("importing.wallet.message", value: "Importing wallet as easy as creating", comment: "")
                     view.logoImageView.image = R.image.create_wallet_import()
                 }
                 $0.header = header
@@ -100,73 +86,79 @@ class ImportWalletViewController: FormViewController {
 
             <<< SegmentedRow<String>(Values.segment) {
                 $0.options = [
-                    //ImportSelectionType.mnemonic.title,
                     ImportSelectionType.keystore.title,
                     ImportSelectionType.privateKey.title,
+                    ImportSelectionType.mnemonic.title,
                     ImportSelectionType.watch.title,
                 ]
                 $0.value = ImportSelectionType.keystore.title
             }
 
-            <<< AppFormAppearance.textArea(tag: Values.mnemonic) {
-                $0.placeholder = NSLocalizedString("Mnemonic", value: "Mnemonic", comment: "")
-                $0.textAreaHeight = .fixed(cellHeight: 140)
-                $0.add(rule: RuleRequired())
-
-                $0.hidden = Eureka.Condition.function([Values.segment], { _ in
-                    return self.segmentRow?.value != ImportSelectionType.mnemonic.title
+            // Keystore JSON
+            +++ Section(footer: ImportSelectionType.keystore.footerTitle) {
+                $0.hidden = Eureka.Condition.function([Values.segment], { [weak self] _ in
+                    return self?.segmentRow?.value != ImportSelectionType.keystore.title
                 })
             }
-
-            <<< AppFormAppearance.textArea(tag: Values.keystore) {
-                $0.placeholder = NSLocalizedString("Keystore JSON", value: "Keystore JSON", comment: "")
+            <<< AppFormAppearance.textArea(tag: Values.keystore) { [weak self] in
+                $0.placeholder = self?.viewModel.keystorePlaceholder
                 $0.textAreaHeight = .fixed(cellHeight: 140)
                 $0.add(rule: RuleRequired())
-
-                $0.hidden = Eureka.Condition.function([Values.segment], { _ in
-                    return self.segmentRow?.value != ImportSelectionType.keystore.title
-                })
             }
-
-            <<< AppFormAppearance.textArea(tag: Values.privateKey) {
-                $0.placeholder = NSLocalizedString("Private Key", value: "Private Key", comment: "")
-                $0.textAreaHeight = .fixed(cellHeight: 140)
-                $0.add(rule: RuleRequired())
-                $0.add(rule: PrivateKeyRule())
-                $0.hidden = Eureka.Condition.function([Values.segment], { _ in
-                    return self.segmentRow?.value != ImportSelectionType.privateKey.title
-                })
-            }
-
-            <<< AppFormAppearance.textFieldFloat(tag: Values.watch) {
-                $0.add(rule: RuleRequired())
-                $0.add(rule: EthereumAddressRule())
-                $0.hidden = Eureka.Condition.function([Values.segment], { _ in
-                 return self.segmentRow?.value != ImportSelectionType.watch.title
-            })
-            }.cellUpdate { cell, _ in
-                cell.textField.placeholder = self.viewModel.watchAddressPlaceholder
-                cell.textField.rightView = recipientRightView
-                cell.textField.rightViewMode = .always
-            }
-
             <<< AppFormAppearance.textFieldFloat(tag: Values.password) {
                 $0.validationOptions = .validatesOnDemand
-                $0.hidden = Eureka.Condition.function([Values.segment], { _ in
-                    return self.segmentRow?.value != ImportSelectionType.keystore.title
-                })
             }.cellUpdate { cell, _ in
                 cell.textField.isSecureTextEntry = true
                 cell.textField.textAlignment = .left
                 cell.textField.placeholder = NSLocalizedString("Password", value: "Password", comment: "")
             }
 
-            +++ Section("")
+            // Private Key
+            +++ Section(footer: ImportSelectionType.privateKey.footerTitle) {
+                $0.hidden = Eureka.Condition.function([Values.segment], { [weak self] _ in
+                    return self?.segmentRow?.value != ImportSelectionType.privateKey.title
+                })
+            }
+            <<< AppFormAppearance.textArea(tag: Values.privateKey) { [weak self] in
+                $0.placeholder = self?.viewModel.privateKeyPlaceholder
+                $0.textAreaHeight = .fixed(cellHeight: 140)
+                $0.add(rule: RuleRequired())
+                $0.add(rule: PrivateKeyRule())
+            }
 
+            // Mnemonic
+            +++ Section(footer: ImportSelectionType.mnemonic.footerTitle) {
+                $0.hidden = Eureka.Condition.function([Values.segment], { [weak self] _ in
+                    return self?.segmentRow?.value != ImportSelectionType.mnemonic.title
+                })
+            }
+            <<< AppFormAppearance.textArea(tag: Values.mnemonic) { [weak self] in
+                $0.placeholder = self?.viewModel.mnemonicPlaceholder
+                $0.textAreaHeight = .fixed(cellHeight: 140)
+                $0.add(rule: RuleRequired())
+                $0.cell.textView?.autocapitalizationType = .none
+            }
+
+            // Watch
+            +++ Section(footer: ImportSelectionType.watch.footerTitle) {
+                $0.hidden = Eureka.Condition.function([Values.segment], { [weak self] _ in
+                    return self?.segmentRow?.value != ImportSelectionType.watch.title
+                })
+            }
+            <<< AppFormAppearance.textFieldFloat(tag: Values.watch) {
+                $0.add(rule: RuleRequired())
+                $0.add(rule: EthereumAddressRule())
+            }.cellUpdate { [weak self] cell, _ in
+                cell.textField.placeholder = self?.viewModel.watchAddressPlaceholder
+                cell.textField.rightView = recipientRightView
+                cell.textField.rightViewMode = .always
+            }
+
+            +++ Section()
             <<< ButtonRow(NSLocalizedString("importWallet.import.button.title", value: "Import", comment: "")) {
                 $0.title = $0.tag
-            }.onCellSelection { [unowned self] _, _ in
-                self.importWallet()
+            }.onCellSelection { [weak self] _, _ in
+                self?.importWallet()
             }
     }
 
@@ -183,7 +175,7 @@ class ImportWalletViewController: FormViewController {
         let password = passwordRow?.value ?? ""
         let watchInput = watchRow?.value?.trimmed ?? ""
         let mnemonicInput = mnemonicRow?.value?.trimmed ?? ""
-        let words = mnemonicInput.components(separatedBy: " ").map { $0.trimmed }
+        let words = mnemonicInput.components(separatedBy: " ").map { $0.trimmed.lowercased() }
 
         displayLoading(text: NSLocalizedString("importWallet.importingIndicator.label.title", value: "Importing wallet...", comment: ""), animated: false)
 
@@ -207,15 +199,19 @@ class ImportWalletViewController: FormViewController {
             switch result {
             case .success(let account):
                 self.didImport(account: account)
+                // analytics event for succesfully imported wallet
+                Analytics.track(.importedWallet(type))
             case .failure(let error):
                 self.displayError(error: error)
+                // analytics event for failed wallet import
+                Analytics.track(.failedImportWallet(type, error))
             }
         }
     }
 
     @objc func demo() {
         //Used for taking screenshots to the App Store by snapshot
-        let demoWallet = Wallet(type: .watch(Address(string: "0xD663bE6b87A992C5245F054D32C7f5e99f5aCc47")!))
+        let demoWallet = Wallet(type: .address(Address(string: "0xD663bE6b87A992C5245F054D32C7f5e99f5aCc47")!))
         delegate?.didImportAccount(account: demoWallet, in: self)
     }
 
@@ -260,7 +256,8 @@ class ImportWalletViewController: FormViewController {
             privateKeyRow?.value = string
             privateKeyRow?.reload()
         case .watch:
-            watchRow?.value = string
+            guard let result = QRURLParser.from(string: string) else { return }
+            watchRow?.value = result.address
             watchRow?.reload()
         case .mnemonic:
             mnemonicRow?.value = string
@@ -296,9 +293,7 @@ extension ImportWalletViewController: QRCodeReaderDelegate {
     }
     func reader(_ reader: QRCodeReaderViewController!, didScanResult result: String!) {
         reader.stopScanning()
+        setValueForCurrentField(string: result)
         reader.dismiss(animated: true)
-
-        guard let result = QRURLParser.from(string: result) else { return }
-        setValueForCurrentField(string: result.address)
     }
 }

@@ -8,15 +8,18 @@ struct EditTokenTableCellViewModel {
     let token: TokenObject
     let coinTicker: CoinTicker?
     let config: Config
+    let isLocal: Bool
 
     init(
         token: TokenObject,
         coinTicker: CoinTicker?,
-        config: Config
+        config: Config,
+        isLocal: Bool = true
     ) {
         self.token = token
         self.coinTicker = coinTicker
         self.config = config
+        self.isLocal = isLocal
     }
 
     var title: String {
@@ -32,11 +35,11 @@ struct EditTokenTableCellViewModel {
     }
 
     var placeholderImage: UIImage? {
-        return R.image.ethereumToken()
+        return R.image.ethereum_logo_256()
     }
 
     var imageUrl: URL? {
-        return coinTicker?.imageURL
+        return token.imageURL
     }
 
     var isEnabled: Bool {
@@ -44,6 +47,10 @@ struct EditTokenTableCellViewModel {
     }
 
     private var isAvailableForChange: Bool {
+        // One version had an option to disable ETH token. Adding functionality to enable it back.
+        if token.contract == TokensDataStore.etherToken(for: config).contract && token.isDisabled == true {
+            return false
+        }
         return token.contract == TokensDataStore.etherToken(for: config).contract ? true : false
     }
 
@@ -62,6 +69,6 @@ struct EditTokenTableCellViewModel {
     }
 
     var isSwitchHidden: Bool {
-        return isAvailableForChange
+        return isAvailableForChange || !isLocal
     }
 }

@@ -20,9 +20,17 @@ public struct Constants {
     public static let donationAddress = "#"
 
     public static let dappsBrowserURL = "https://start.myubi.io"
+    public static let dappsOpenSea = "https://opensea.io"
+
+    public static let images = "https://trustwalletapp.com/images"
 }
 
 public struct UnitConfiguration {
     public static let gasPriceUnit: EthereumUnit = .gwei
     public static let gasFeeUnit: EthereumUnit = .ether
+}
+
+public struct URLSchemes {
+    public static let trust = "trust://"
+    public static let browser = trust + "browser"
 }

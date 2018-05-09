@@ -10,7 +10,7 @@ protocol ExportPrivateKeyCoordinatorDelegate: class {
 
 class ExportPrivateKeyCoordinator: Coordinator {
 
-    let navigationController: UINavigationController
+    let navigationController: NavigationController
     weak var delegate: ExportPrivateKeyCoordinatorDelegate?
     let keystore: Keystore
     let account: Account
@@ -24,7 +24,7 @@ class ExportPrivateKeyCoordinator: Coordinator {
     }()
 
     init(
-        navigationController: UINavigationController,
+        navigationController: NavigationController = NavigationController(),
         keystore: Keystore,
         account: Account
     ) {

@@ -2,7 +2,7 @@
 
 import XCTest
 @testable import Trust
-import TrustKeystore
+import TrustCore
 
 class PaymentCoordinatorTests: XCTestCase {
 
@@ -24,7 +24,7 @@ class PaymentCoordinatorTests: XCTestCase {
     func testRequestFlow() {
         let coordinator = PaymentCoordinator(
             navigationController: FakeNavigationController(),
-            flow: .request,
+            flow: .request(token: .make()),
             session: .make(),
             keystore: FakeKeystore(),
             storage: FakeTokensDataStore()

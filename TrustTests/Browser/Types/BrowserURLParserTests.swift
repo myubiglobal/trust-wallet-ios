@@ -9,7 +9,7 @@ class BrowserURLParserTests: XCTestCase {
         let parser = BrowserURLParser()
         let query = "1"
         let result = parser.url(from: query)
-        let expected = "https://\(parser.searchHost)/search?q=1"
+        let expected = "https://\(parser.engine.host)/search?q=1"
 
         XCTAssertEqual(result?.absoluteString, expected)
     }
@@ -18,7 +18,7 @@ class BrowserURLParserTests: XCTestCase {
         let parser = BrowserURLParser()
         let query = "1 2?a=b&c"
         let result = parser.url(from: query)
-        let expected = "https://\(parser.searchHost)/search?q=1%202?a%3Db%26c"
+        let expected = "https://\(parser.engine.host)/search?q=1%202?a%3Db%26c"
 
         XCTAssertEqual(result?.absoluteString, expected)
     }
@@ -28,7 +28,7 @@ class BrowserURLParserTests: XCTestCase {
         let query = "trustwalletapp.com"
         let result = parser.url(from: query)
 
-        XCTAssertEqual(result?.absoluteString, "https://trustwalletapp.com")
+        XCTAssertEqual(result?.absoluteString, "http://trustwalletapp.com")
     }
 
     func testParseHttp() {
@@ -52,7 +52,7 @@ class BrowserURLParserTests: XCTestCase {
         let string = "trustwalletapp.com/path?q=1"
         let result = parser.url(from: string)
 
-        XCTAssertEqual(result?.absoluteString, "https://\(string)")
+        XCTAssertEqual(result?.absoluteString, "http://\(string)")
     }
 
     func testParseLongDomain() {
@@ -60,14 +60,14 @@ class BrowserURLParserTests: XCTestCase {
         let string = "test.trustwalletapp.info"
         let result = parser.url(from: string)
 
-        XCTAssertEqual(result?.absoluteString, "https://\(string)")
+        XCTAssertEqual(result?.absoluteString, "http://\(string)")
     }
 
     func testSearchURL() {
         let parser = BrowserURLParser()
         let query = "test"
         let result = parser.buildSearchURL(for: query)
-        let expeted = "https://\(parser.searchHost)/search?q=test"
+        let expeted = "https://\(parser.engine.host)/search?q=test"
 
         XCTAssertEqual(result.absoluteString, expeted)
     }

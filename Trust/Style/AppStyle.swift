@@ -1,52 +1,47 @@
 // Copyright SIX DAY LLC. All rights reserved.
 
-import Foundation
 import UIKit
-import Eureka
 
-func applyStyle() {
+enum AppStyle {
+    case heading
+    case headingSemiBold
+    case paragraph
+    case paragraphLight
+    case largeAmount
+    case error
+    case formHeader
 
-    if #available(iOS 11, *) {
-    } else {
-        UINavigationBar.appearance().isTranslucent = false
+    var font: UIFont {
+        switch self {
+        case .heading:
+            return UIFont.systemFont(ofSize: 18, weight: .regular)
+        case .headingSemiBold:
+            return UIFont.systemFont(ofSize: 18, weight: .semibold)
+        case .paragraph:
+            return UIFont.systemFont(ofSize: 15, weight: .regular)
+        case .paragraphLight:
+            return UIFont.systemFont(ofSize: 15, weight: .light)
+        case .largeAmount:
+            return UIFont.systemFont(ofSize: 20, weight: .medium)
+        case .error:
+            return UIFont.systemFont(ofSize: 12, weight: .light)
+        case .formHeader:
+            return UIFont.systemFont(ofSize: 14, weight: .regular)
+        }
     }
-    UINavigationBar.appearance().tintColor = AppStyle.navigationBarTintColor
-    UINavigationBar.appearance().setBackgroundImage(.filled(with: Colors.darkBlue), for: .default)
 
-    UINavigationBar.appearance().titleTextAttributes = [
-        .foregroundColor: UIColor.white,
-    ]
-
-    UITextField.appearance().tintColor = Colors.blue
-
-    UIImageView.appearance().tintColor = Colors.lightBlue
-    UIImageView.appearance(whenContainedInInstancesOf: [BrowserNavigationBar.self]).tintColor = .white
-
-    BalanceTitleView.appearance().titleTextColor = UIColor.white
-    BalanceTitleView.appearance().subTitleTextColor = UIColor(white: 0.9, alpha: 1)
-}
-
-struct Colors {
-    static let darkBlue = UIColor(hex: "6c6c6c")
-    static let blue = UIColor(hex: "6c6c6c") //2e91db
-    static let red = UIColor(hex: "f7506c")
-    static let veryLightRed = UIColor(hex: "FFF4F4")
-    static let veryLightOrange = UIColor(hex: "FFECC9")
-    static let green = UIColor(hex: "2fbb4f")
-    static let lightGray = UIColor.lightGray
-    static let veryLightGray = UIColor(hex: "F6F6F6")
-    static let gray = UIColor.gray
-    static let darkGray = UIColor(hex: "606060")
-    static let black = UIColor(hex: "313849")
-    static let lightBlack = UIColor(hex: "313849")
-    static let lightBlue = UIColor(hex: "6c6c6c")
-}
-
-struct AppStyle {
-    static let navigationBarTintColor = UIColor.white
-    static let docPickerNavigationBarTintColor = Colors.blue
-}
-
-struct StyleLayout {
-    static let sideMargin: CGFloat = 15
+    var textColor: UIColor {
+        switch self {
+        case .heading, .headingSemiBold:
+            return Colors.black
+        case .paragraph, .paragraphLight:
+            return Colors.charcoal
+        case .largeAmount:
+            return UIColor.black // Usually colors based on the amount
+        case .error:
+            return Colors.errorRed
+        case .formHeader:
+            return Colors.doveGray
+        }
+    }
 }

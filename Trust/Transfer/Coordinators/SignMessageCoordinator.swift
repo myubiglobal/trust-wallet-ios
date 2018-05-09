@@ -2,13 +2,14 @@
 
 import Foundation
 import UIKit
+import TrustCore
 import TrustKeystore
-import CryptoSwift
 import Result
 
 enum SignMesageType {
     case message(Data)
     case personalMessage(Data)
+    case typedMessage([EthTypedData])
 }
 
 protocol SignMessageCoordinatorDelegate: class {
@@ -19,7 +20,7 @@ class SignMessageCoordinator: Coordinator {
 
     var coordinators: [Coordinator] = []
 
-    let navigationController: UINavigationController
+    let navigationController: NavigationController
     let keystore: Keystore
     let account: Account
 
@@ -27,7 +28,7 @@ class SignMessageCoordinator: Coordinator {
     var didComplete: ((Result<Data, AnyError>) -> Void)?
 
     init(
-        navigationController: UINavigationController,
+        navigationController: NavigationController,
         keystore: Keystore,
         account: Account
     ) {
@@ -65,20 +66,23 @@ class SignMessageCoordinator: Coordinator {
     }
 
     func message(for type: SignMesageType) -> String {
-        let data: Data = {
-            switch type {
-            case .message(let data), .personalMessage(let data):
-                return data
-            }
-        }()
-        guard let message = String(data: data, encoding: .utf8) else {
-            return data.hexEncoded
+        switch type {
+        case .message(let data),
+             .personalMessage(let data):
+                guard let message = String(data: data, encoding: .utf8) else {
+                    return data.hexEncoded
+                }
+                return message
+        case .typedMessage(let (typedData)):
+                let string = typedData.map {
+                    return "\($0.name) : \($0.value.string)"
+                }.joined(separator: "\n")
+                return string
         }
-        return message
     }
 
     func isMessage(data: Data) -> Bool {
-        guard let _ = String(data: data, encoding: .utf8) else { return false}
+        guard let _ = String(data: data, encoding: .utf8) else { return false }
         return true
     }
 
@@ -94,6 +98,12 @@ class SignMessageCoordinator: Coordinator {
             }
         case .personalMessage(let data):
             result = keystore.signPersonalMessage(data, for: account)
+        case .typedMessage(let typedData):
+            if typedData.isEmpty {
+                result = .failure(KeystoreError.failedToSignMessage)
+            } else {
+                result = keystore.signTypedMessage(typedData, for: account)
+            }
         }
         switch result {
         case .success(let data):

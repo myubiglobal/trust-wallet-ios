@@ -1,18 +1,21 @@
 // Copyright SIX DAY LLC. All rights reserved.
 
 import Foundation
-import TrustKeystore
+import TrustCore
 import UIKit
+import WebKit
+import RealmSwift
 
 protocol SettingsCoordinatorDelegate: class {
     func didRestart(with account: Wallet, in coordinator: SettingsCoordinator)
     func didUpdateAccounts(in coordinator: SettingsCoordinator)
+    func didPressURL(_ url: URL, in coordinator: SettingsCoordinator)
     func didCancel(in coordinator: SettingsCoordinator)
 }
 
 class SettingsCoordinator: Coordinator {
 
-    let navigationController: UINavigationController
+    let navigationController: NavigationController
     let keystore: Keystore
     let session: WalletSession
     let storage: TransactionsStorage
@@ -21,19 +24,40 @@ class SettingsCoordinator: Coordinator {
     let pushNotificationsRegistrar = PushNotificationsRegistrar()
     var coordinators: [Coordinator] = []
 
+    lazy var accountsCoordinator: AccountsCoordinator = {
+        let coordinator = AccountsCoordinator(
+            navigationController: navigationController,
+            keystore: keystore,
+            session: session,
+            balanceCoordinator: balanceCoordinator
+        )
+        coordinator.delegate = self
+        return coordinator
+    }()
+
     lazy var rootViewController: SettingsViewController = {
-        let controller = SettingsViewController(session: session)
+        let controller = SettingsViewController(
+            session: session,
+            keystore: keystore,
+            balanceCoordinator: balanceCoordinator,
+            accountsCoordinator: accountsCoordinator
+        )
         controller.delegate = self
         controller.modalPresentationStyle = .pageSheet
         return controller
     }()
+    let sharedRealm: Realm
+    private lazy var historyStore: HistoryStore = {
+        return HistoryStore(realm: sharedRealm)
+    }()
 
     init(
-        navigationController: UINavigationController = NavigationController(),
+        navigationController: NavigationController = NavigationController(),
         keystore: Keystore,
         session: WalletSession,
         storage: TransactionsStorage,
-        balanceCoordinator: TokensBalanceService
+        balanceCoordinator: TokensBalanceService,
+        sharedRealm: Realm
     ) {
         self.navigationController = navigationController
         self.navigationController.modalPresentationStyle = .formSheet
@@ -41,36 +65,74 @@ class SettingsCoordinator: Coordinator {
         self.session = session
         self.storage = storage
         self.balanceCoordinator = balanceCoordinator
+        self.sharedRealm = sharedRealm
+
+        addCoordinator(accountsCoordinator)
     }
 
     func start() {
         navigationController.viewControllers = [rootViewController]
     }
 
-    @objc func showAccounts() {
-        let coordinator = AccountsCoordinator(
-            navigationController: NavigationController(),
-            keystore: keystore,
-            session: session,
-            balanceCoordinator: balanceCoordinator
-        )
-        coordinator.delegate = self
-        coordinator.start()
-        addCoordinator(coordinator)
-        navigationController.present(coordinator.navigationController, animated: true, completion: nil)
-    }
-
     func restart(for wallet: Wallet) {
         delegate?.didRestart(with: wallet, in: self)
+    }
+
+    func cleadCache() {
+        let dataStore = WKWebsiteDataStore.default()
+        dataStore.fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { (records) in
+            dataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), for: records, completionHandler: { })
+        }
+        historyStore.clearAll()
+    }
+
+    private func presentSwitchNetworkWarning(for server: RPCServer) {
+        var config = session.config
+        let viewModel = SettingsViewModel()
+        let alertViewController = UIAlertController.alertController(
+            title: viewModel.testNetworkWarningTitle,
+            message: viewModel.testNetworkWarningMessage,
+            style: .alert,
+            in: navigationController
+        )
+
+        alertViewController.popoverPresentationController?.sourceView = navigationController.view
+        alertViewController.popoverPresentationController?.sourceRect = navigationController.view.centerRect
+
+        let okAction = UIAlertAction(title: NSLocalizedString("OK", value: "OK", comment: ""), style: .default) { _ in
+            self.switchNetwork(for: server)
+        }
+        let dontShowAgainAction = UIAlertAction(title: viewModel.testNetworkWarningDontShowAgainLabel, style: .default) { _ in
+            config.testNetworkWarningOff = true
+            self.switchNetwork(for: server)
+        }
+
+        alertViewController.addAction(dontShowAgainAction)
+        alertViewController.addAction(okAction)
+        navigationController.present(alertViewController, animated: true, completion: nil)
+    }
+
+    func prepareSwitchNetwork(for server: RPCServer) {
+        if server.networkType != .main && session.config.testNetworkWarningOff == false {
+            presentSwitchNetworkWarning(for: server)
+        } else {
+            switchNetwork(for: server)
+        }
+    }
+
+    func switchNetwork(for server: RPCServer) {
+        var config = session.config
+        config.chainID = server.chainID
+        restart(for: session.account)
     }
 }
 
 extension SettingsCoordinator: SettingsViewControllerDelegate {
     func didAction(action: SettingsAction, in viewController: SettingsViewController) {
         switch action {
-        case .wallets:
-            showAccounts()
-        case .RPCServer, .currency, .DAppsBrowser:
+        case .RPCServer(let server):
+            prepareSwitchNetwork(for: server)
+        case .currency:
             restart(for: session.account)
         case .pushNotifications(let change):
             switch change {
@@ -84,6 +146,10 @@ extension SettingsCoordinator: SettingsViewControllerDelegate {
             case .preferences:
                 pushNotificationsRegistrar.register()
             }
+        case .openURL(let url):
+            delegate?.didPressURL(url, in: self)
+        case .clearBrowserCache:
+            cleadCache()
         }
     }
 }

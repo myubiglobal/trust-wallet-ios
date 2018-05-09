@@ -2,6 +2,12 @@
 
 import Foundation
 
+enum NetworkType {
+    case main
+    case test
+    case custom
+}
+
 enum RPCServer {
     case main
     case kovan
@@ -22,7 +28,7 @@ enum RPCServer {
         case .poa: return 99
         case .sokol: return 77
         case .classic: return 61
-        case .callisto: return 104729
+        case .callisto: return 820
         case .custom(let custom):
             return custom.chainID
         }
@@ -47,10 +53,11 @@ enum RPCServer {
         return "\(self.name) (\(self.symbol))"
     }
 
-    var isTestNetwork: Bool {
+    var networkType: NetworkType {
         switch self {
-        case .main, .poa, .classic, .callisto, .custom: return false
-        case .kovan, .ropsten, .rinkeby, .sokol: return true
+        case .main, .poa, .classic, .callisto: return .main
+        case .kovan, .ropsten, .rinkeby, .sokol: return .test
+        case .custom: return .custom
         }
     }
 
@@ -68,8 +75,48 @@ enum RPCServer {
         }
     }
 
+    var address: String {
+        return "0x0000000000000000000000000000000000000000"
+    }
+
     var decimals: Int {
         return 18
+    }
+
+    var rpcURL: URL {
+        let urlString: String = {
+            switch self {
+            case .main: return "https://mainnet.infura.io/llyrtzQ3YhkdESt2Fzrk"
+            case .classic: return "https://web3.gastracker.io"
+            case .callisto: return "https://clo-geth.0xinfra.com"
+            case .kovan: return "https://kovan.infura.io/llyrtzQ3YhkdESt2Fzrk"
+            case .ropsten: return "https://ropsten.infura.io/llyrtzQ3YhkdESt2Fzrk"
+            case .rinkeby: return "https://rinkeby.infura.io/llyrtzQ3YhkdESt2Fzrk"
+            case .poa: return "https://core.poa.network"
+            case .sokol: return "https://sokol.poa.network"
+            case .custom(let custom):
+                return custom.endpoint
+            }
+        }()
+        return URL(string: urlString)!
+    }
+
+    var remoteURL: URL {
+        let urlString: String = {
+            switch self {
+            case .main: return "https://api.trustwalletapp.com"
+            case .classic: return "https://classic.trustwalletapp.com"
+            case .callisto: return "https://callisto.trustwalletapp.com"
+            case .kovan: return "https://kovan.trustwalletapp.com"
+            case .ropsten: return "https://ropsten.trustwalletapp.com"
+            case .rinkeby: return "https://rinkeby.trustwalletapp.com"
+            case .poa: return "https://poa.trustwalletapp.com"
+            case .sokol: return "https://trust-sokol.herokuapp.com"
+            case .custom(let custom):
+                return "" // Enable? make optional
+            }
+        }()
+        return URL(string: urlString)!
     }
 
     init(name: String) {

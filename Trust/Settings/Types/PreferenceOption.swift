@@ -3,13 +3,15 @@
 import Foundation
 
 enum PreferenceOption {
-    case showTokensOnLaunch
     case airdropNotifications
+    case browserSearchEngine
+    case sendLogs
 
     var key: String {
         switch self {
-        case .showTokensOnLaunch: return "showTokensOnLaunch"
         case .airdropNotifications: return "airdropNotifications"
+        case .browserSearchEngine: return "browserSearchEngine"
+        case .sendLogs: return "sendLogs"
         }
     }
 }

@@ -71,9 +71,9 @@ class SupportViewController: FormViewController {
         return AppFormAppearance.button {
             $0.title = title
             $0.value = value
-        }.onCellSelection { [unowned self] (_, row) in
-            guard let value = row.value, let url = URL(string: value) else { return }
-            self.openURL(url)
+        }.onCellSelection { [weak self] (_, row) in
+            guard let `self` = self, let value = row.value, let url = URL(string: value) else { return }
+            self.delegate?.didPressURL(url, in: self)
         }.cellSetup { cell, _ in
             cell.imageView?.image = image
         }

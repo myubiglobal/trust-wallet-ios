@@ -1,14 +1,17 @@
 // Copyright SIX DAY LLC. All rights reserved.
 
 import Foundation
-import TrustKeystore
+import JdenticonSwift
+import TrustCore
 import UIKit
 
 struct AccountViewModel {
+    let identiconSize = 60 as CGFloat
     let wallet: Wallet
     let current: Wallet?
     let walletBalance: Balance?
     let server: RPCServer
+
     init(
         server: RPCServer,
         wallet: Wallet,
@@ -20,8 +23,9 @@ struct AccountViewModel {
         self.current = current
         self.walletBalance = walletBalance
     }
+
     var isWatch: Bool {
-        return wallet.type == .watch(wallet.address)
+        return wallet.type == .address(wallet.address)
     }
 
     var balanceText: String {
@@ -35,5 +39,12 @@ struct AccountViewModel {
 
     var isActive: Bool {
         return wallet == current
+    }
+
+    var identicon: UIImage? {
+        guard let cgImage = IconGenerator(size: identiconSize, hash: wallet.address.data).render() else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage)
     }
 }

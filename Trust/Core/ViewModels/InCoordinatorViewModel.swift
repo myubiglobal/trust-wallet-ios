@@ -1,6 +1,7 @@
 // Copyright SIX DAY LLC. All rights reserved.
 
 import Foundation
+import UIKit
 
 struct InCoordinatorViewModel {
 
@@ -15,21 +16,39 @@ struct InCoordinatorViewModel {
         self.preferences = preferences
     }
 
-    var tokensAvailable: Bool {
-        switch config.server {
-        case .main, .classic, .kovan, .ropsten, .rinkeby, .poa, .sokol, .custom: return true
-        case .callisto: return false
-        }
+    var imageInsets: UIEdgeInsets {
+        return UIEdgeInsets(top: 6, left: 0, bottom: -6, right: 0)
     }
 
-    var canActivateDebugMode: Bool {
-        return config.server.isTestNetwork
+    var browserBarItem: UITabBarItem {
+        return UITabBarItem(
+            title: NSLocalizedString("browser.tabbar.item.title", value: "Browser", comment: ""),
+            image: R.image.dapps_icon(),
+            selectedImage: nil
+        )
     }
 
-    var initialTab: Tabs {
-        guard preferences.get(for: .showTokensOnLaunch) else {
-            return .transactions
-        }
-        return .tokens
+    var transactionsBarItem: UITabBarItem {
+        return UITabBarItem(
+            title: NSLocalizedString("transactions.tabbar.item.title", value: "Transactions", comment: ""),
+            image: R.image.feed(),
+            selectedImage: nil
+        )
+    }
+
+    var walletBarItem: UITabBarItem {
+        return UITabBarItem(
+            title: NSLocalizedString("wallet.navigation.title", value: "Wallet", comment: ""),
+            image: R.image.wallet_tab_icon(),
+            selectedImage: nil
+        )
+    }
+
+    var settingsBarItem: UITabBarItem {
+        return UITabBarItem(
+            title: NSLocalizedString("settings.navigation.title", value: "Settings", comment: ""),
+            image: R.image.settings_icon(),
+            selectedImage: nil
+        )
     }
 }

@@ -1,11 +1,12 @@
 // Copyright SIX DAY LLC. All rights reserved.
 
 import Foundation
-import TrustKeystore
+import TrustCore
 import UIKit
+import URLNavigator
 
 class AppCoordinator: NSObject, Coordinator {
-    let navigationController: UINavigationController
+    let navigationController: NavigationController
     lazy var welcomeViewController: WelcomeViewController = {
         let controller = WelcomeViewController()
         controller.delegate = self
@@ -15,14 +16,22 @@ class AppCoordinator: NSObject, Coordinator {
     private let lock = Lock()
     private var keystore: Keystore
     private var appTracker = AppTracker()
+    private var navigator: URLNavigatorCoordinator
+
+    var inCoordinator: InCoordinator? {
+        return self.coordinators.compactMap { $0 as? InCoordinator }.first
+    }
+
     var coordinators: [Coordinator] = []
     init(
         window: UIWindow,
         keystore: Keystore,
-        navigationController: UINavigationController = NavigationController()
+        navigator: URLNavigatorCoordinator = URLNavigatorCoordinator(),
+        navigationController: NavigationController = NavigationController()
     ) {
         self.navigationController = navigationController
         self.keystore = keystore
+        self.navigator = navigator
         super.init()
         window.rootViewController = navigationController
         window.makeKeyAndVisible()
@@ -41,6 +50,11 @@ class AppCoordinator: NSObject, Coordinator {
             resetToWelcomeScreen()
         }
         pushNotificationRegistrar.reRegister()
+
+        navigator.branch.newEventClosure = { [weak self] event in
+            guard let coordinator = self?.inCoordinator else { return false }
+            return coordinator.handleEvent(event)
+        }
     }
 
     func showTransactions(for wallet: Wallet) {
@@ -48,20 +62,26 @@ class AppCoordinator: NSObject, Coordinator {
             navigationController: navigationController,
             wallet: wallet,
             keystore: keystore,
-            appTracker: appTracker
+            appTracker: appTracker,
+            navigator: navigator.navigator
         )
         coordinator.delegate = self
         coordinator.start()
         addCoordinator(coordinator)
+
+        // Activate last event on first sign in
+        guard let event = navigator.branch.lastEvent else { return }
+        coordinator.handleEvent(event)
+        navigator.branch.clearEvents()
     }
 
     func inializers() {
-        var paths = NSSearchPathForDirectoriesInDomains(.documentDirectory, .allDomainsMask, true).flatMap { URL(fileURLWithPath: $0) }
+        var paths = NSSearchPathForDirectoriesInDomains(.documentDirectory, .allDomainsMask, true).compactMap { URL(fileURLWithPath: $0) }
         paths.append(keystore.keysDirectory)
-        paths.append(keystore.walletsDirectory)
 
         let initializers: [Initializer] = [
             CrashReportInitializer(),
+            FirebaseInitializer(),
             LokaliseInitializer(),
             SkipBackupFilesInitializer(paths: paths),
         ]

@@ -3,14 +3,19 @@
 import UIKit
 import StatefulViewController
 import RealmSwift
+import PromiseKit
+
+protocol NonFungibleTokensViewControllerDelegate: class {
+    func didPressDiscover()
+}
 
 class NonFungibleTokensViewController: UIViewController {
 
-    fileprivate var viewModel: NonFungibleTokenViewModel
-    
+    private var viewModel: NonFungibleTokenViewModel
     let tableView: UITableView
-
     let refreshControl = UIRefreshControl()
+
+    weak var delegate: NonFungibleTokensViewControllerDelegate?
 
     init(
         viewModel: NonFungibleTokenViewModel
@@ -23,9 +28,8 @@ class NonFungibleTokensViewController: UIViewController {
         tableView.dataSource = self
         tableView.separatorStyle = .none
         tableView.backgroundColor = .white
-        tableView.allowsSelection = false
         view.addSubview(tableView)
-        tableView.register(R.nib.nonFungibleTokenViewCell(), forCellReuseIdentifier: NonFungibleTokenViewCell.identifier)
+        tableView.register(R.nib.nonFungibleTokenViewCell(), forCellReuseIdentifier: R.nib.nonFungibleTokenViewCell.name)
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.topAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -39,42 +43,12 @@ class NonFungibleTokensViewController: UIViewController {
         })
         loadingView = LoadingView()
         emptyView = EmptyView(
-            title: NSLocalizedString("emptyView.noNonTokens.label.title", value: "You haven't received any non fungible tokens yet!", comment: ""),
+            title: NSLocalizedString("emptyView.noNonTokens.label.title", value: "No Collectibles Found", comment: ""),
+            actionTitle: NSLocalizedString("collectibles.discover.label.title", value: "Explore on OpenSea.io", comment: ""),
             onRetry: { [weak self] in
-                self?.fetch()
+                self?.delegate?.didPressDiscover()
         })
-        tokensObservation()
         fetch()
-    }
-
-    private func tokensObservation() {
-        viewModel.setTokenObservation { [weak self] (changes: RealmCollectionChange) in
-            guard let strongSelf = self else { return }
-            let tableView = strongSelf.tableView
-            switch changes {
-            case .initial:
-                tableView.reloadData()
-                self?.endLoading()
-            case .update(_, let deletions, let insertions, let modifications):
-                tableView.beginUpdates()
-                var insertIndexSet = IndexSet()
-                insertions.forEach { insertIndexSet.insert($0) }
-                tableView.insertSections(insertIndexSet, with: insertions.count == 1 ? .top : .none)
-                var deleteIndexSet = IndexSet()
-                deletions.forEach { deleteIndexSet.insert($0) }
-                tableView.deleteSections(deleteIndexSet, with: .none)
-                var updateIndexSet = IndexSet()
-                modifications.forEach { updateIndexSet.insert($0) }
-                tableView.reloadSections(updateIndexSet, with: .none)
-                tableView.endUpdates()
-                self?.endLoading()
-            case .error(let error):
-                self?.endLoading(animated: true, error: error, completion: nil)
-            }
-            if strongSelf.refreshControl.isRefreshing {
-                strongSelf.refreshControl.endRefreshing()
-            }
-        }
     }
 
     required init?(coder aDecoder: NSCoder) {
@@ -86,31 +60,31 @@ class NonFungibleTokensViewController: UIViewController {
         self.navigationController?.applyTintAdjustment()
     }
 
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        viewModel.invalidateTokensObservation()
+    }
+
     @objc func pullToRefresh() {
         refreshControl.beginRefreshing()
         fetch()
     }
 
     func fetch() {
-        startLoading()
-        viewModel.fetchAssets()
+        firstly {
+            viewModel.fetchAssets()
+        }.done { [weak self] _ in
+            self?.endLoading()
+            self?.tableView.reloadData()
+        }.ensure { [weak self] in
+            self?.refreshControl.endRefreshing()
+        }.catch { [weak self] error in
+            self?.endLoading(animated: true, error: error, completion: nil)
+        }
     }
 
     fileprivate func hederView(for section: Int) -> UIView {
-        let conteiner = UIView()
-        conteiner.backgroundColor = viewModel.headerBackgroundColor
-        let title = UILabel()
-        title.text = viewModel.title(for: section)
-        title.sizeToFit()
-        title.textColor = viewModel.headerTitleTextColor
-        title.font = viewModel.headerTitleFont
-        conteiner.addSubview(title)
-        title.translatesAutoresizingMaskIntoConstraints = false
-        let horConstraint = NSLayoutConstraint(item: title, attribute: .centerX, relatedBy: .equal, toItem: conteiner, attribute: .centerX, multiplier: 1.0, constant: 0.0)
-        let verConstraint = NSLayoutConstraint(item: title, attribute: .centerY, relatedBy: .equal, toItem: conteiner, attribute: .centerY, multiplier: 1.0, constant: 0.0)
-        let leftConstraint = NSLayoutConstraint(item: title, attribute: .left, relatedBy: .equal, toItem: conteiner, attribute: .left, multiplier: 1.0, constant: 20.0)
-        conteiner.addConstraints([horConstraint, verConstraint, leftConstraint])
-        return conteiner
+        return SectionHeader(fillColor: viewModel.headerBackgroundColor, borderColor: viewModel.headerBorderColor, title: viewModel.title(for: section), textColor: viewModel.headerTitleTextColor, textFont: viewModel.headerTitleFont)
     }
 }
 
@@ -122,13 +96,17 @@ extension NonFungibleTokensViewController: StatefulViewController {
 
 extension NonFungibleTokensViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 80
+        return 260
+    }
+
+    func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
+        return 0.0
     }
 }
 
 extension NonFungibleTokensViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: NonFungibleTokenViewCell.identifier, for: indexPath) as! NonFungibleTokenViewCell
+        let cell = tableView.dequeueReusableCell(withIdentifier: R.nib.nonFungibleTokenViewCell.name, for: indexPath) as! NonFungibleTokenViewCell
         cell.configure(viewModel: viewModel.cellViewModel(for: indexPath))
         return cell
     }
@@ -145,7 +123,11 @@ extension NonFungibleTokensViewController: UITableViewDataSource {
         return hederView(for: section)
     }
 
+    func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
+        return UIView()
+    }
+
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
-        return 30
+        return StyleLayout.TableView.heightForHeaderInSection
     }
 }

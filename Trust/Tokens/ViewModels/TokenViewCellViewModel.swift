@@ -36,38 +36,11 @@ struct TokenViewCellViewModel {
     }
 
     var currencyAmount: String? {
-        guard let ticker = ticker else { return nil }
-        let tokenValue = CurrencyFormatter.plainFormatter.string(from: token.valueBigInt, decimals: token.decimals).doubleValue
-        let priceInUsd = Double(ticker.price) ?? 0
-        let amount = tokenValue * priceInUsd
-        guard amount > 0 else { return nil }
-        return CurrencyFormatter.formatter.string(from: NSNumber(value: amount))
-    }
-
-    var percentChange: String? {
-        guard let percent_change_24h = ticker?.percent_change_24h, !percent_change_24h.isEmpty else { return nil }
-        return "(" + percent_change_24h + "%)"
-    }
-
-    var percentChangeColor: UIColor {
-        guard let ticker = ticker else { return Colors.lightGray }
-        return ticker.percent_change_24h.starts(with: "-") ? Colors.red : Colors.green
-    }
-
-    var percentChangeFont: UIFont {
-        return UIFont.systemFont(ofSize: 12, weight: .light)
-    }
-
-    var amountTextColor: UIColor {
-        return Colors.black
+        return TokensLayout.cell.totalFiatAmount(for: ticker, token: token)
     }
 
     var amountFont: UIFont {
         return UIFont.systemFont(ofSize: 17, weight: .medium)
-    }
-
-    var currencyAmountTextColor: UIColor {
-        return Colors.lightGray
     }
 
     var currencyAmountFont: UIFont {
@@ -78,11 +51,34 @@ struct TokenViewCellViewModel {
         return .white
     }
 
-    var placeHolder: UIImage? {
-        return R.image.ethereumToken()
+    var amountTextColor: UIColor {
+        return Colors.black
+    }
+
+    var currencyAmountTextColor: UIColor {
+        return Colors.lightGray
+    }
+
+    var percentChange: String? {
+        guard let _ = currencyAmount else {
+            return .none
+        }
+        return TokensLayout.cell.percentChange(for: ticker)
+    }
+
+    var percentChangeColor: UIColor {
+        return TokensLayout.cell.percentChangeColor(for: ticker)
+    }
+
+    var percentChangeFont: UIFont {
+        return UIFont.systemFont(ofSize: 12, weight: .light)
+    }
+
+    var placeholderImage: UIImage? {
+        return R.image.ethereum_logo_256()
     }
 
     var imageUrl: URL? {
-        return ticker?.imageURL
+        return URL(string: token.imagePath)
     }
 }

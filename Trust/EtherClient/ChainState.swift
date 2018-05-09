@@ -3,11 +3,13 @@
 import Foundation
 import JSONRPCKit
 import APIKit
+import BigInt
 
 class ChainState {
 
     struct Keys {
         static let latestBlock = "chainID"
+        static let gasPrice = "gasPrice"
     }
 
     let config: Config
@@ -15,6 +17,12 @@ class ChainState {
     private var latestBlockKey: String {
         return "\(config.chainID)-" + Keys.latestBlock
     }
+
+    private var gasPriceBlockKey: String {
+        return "\(config.chainID)-" + Keys.gasPrice
+    }
+
+    var chainStateCompletion: ((Bool, Int) -> Void)?
 
     var latestBlock: Int {
         get {
@@ -24,6 +32,14 @@ class ChainState {
             defaults.set(newValue, forKey: latestBlockKey)
         }
     }
+    var gasPrice: BigInt? {
+        get {
+            guard let value = defaults.string(forKey: gasPriceBlockKey) else { return .none }
+            return BigInt(value, radix: 10)
+        }
+        set { defaults.set(newValue?.description, forKey: gasPriceBlockKey) }
+    }
+
     let defaults: UserDefaults
 
     var updateLatestBlock: Timer?
@@ -58,13 +74,32 @@ class ChainState {
         }
         self.updateLatestBlock = Timer.scheduledTimer(timeInterval: 6, target: self, selector: #selector(fetch), userInfo: nil, repeats: true)
     }
+
     @objc func fetch() {
-        let request = EtherServiceRequest(batch: BatchFactory().create(BlockNumberRequest()))
+        getLastBlock()
+        getGasPrice()
+    }
+
+    private func getLastBlock() {
+        let request = EtherServiceRequest(batch: BatchFactory().create(BlockNumberRequest()), timeoutInterval: 5.0)
         Session.send(request) { [weak self] result in
             guard let `self` = self else { return }
             switch result {
             case .success(let number):
                 self.latestBlock = number
+                self.chainStateCompletion?(true, number)
+            case .failure:
+                self.chainStateCompletion?(false, 0)
+            }
+        }
+    }
+
+    private func getGasPrice() {
+        let request = EtherServiceRequest(batch: BatchFactory().create(GasPriceRequest()))
+        Session.send(request) { [weak self] result in
+            switch result {
+            case .success(let balance):
+                self?.gasPrice = BigInt(balance.drop0x, radix: 16)
             case .failure: break
             }
         }
@@ -73,8 +108,8 @@ class ChainState {
     func confirmations(fromBlock: Int) -> Int? {
         guard fromBlock > 0 else { return nil }
         let block = latestBlock - fromBlock
-        guard latestBlock != 0, block > 0 else { return nil }
-        return max(0, block)
+        guard latestBlock != 0, block >= 0 else { return nil }
+        return max(1, block)
     }
     deinit {
         NotificationCenter.default.removeObserver(self)

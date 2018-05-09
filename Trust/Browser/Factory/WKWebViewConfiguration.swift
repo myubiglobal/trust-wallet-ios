@@ -6,7 +6,7 @@ import JavaScriptCore
 
 extension WKWebViewConfiguration {
 
-    static func make(for account: Wallet,with sessionConfig: Config, in messageHandler: WKScriptMessageHandler) -> WKWebViewConfiguration {
+    static func make(for account: Wallet, with sessionConfig: Config, in messageHandler: WKScriptMessageHandler) -> WKWebViewConfiguration {
         let address = account.address.description.lowercased()
         let config = WKWebViewConfiguration()
         var js = ""
@@ -18,18 +18,15 @@ extension WKWebViewConfiguration {
         if let filepath = bundle.path(forResource: "trust-min", ofType: "js") {
             do {
                 js += try String(contentsOfFile: filepath)
-                NSLog("Loaded Trust in page provider")
             } catch {
-                NSLog("Failed to load Trust in page provider")
+                Analytics.track(.failedToLoadTrustPageProvider)
             }
-        } else {
-            NSLog("Trust in page provider not found in bundle")
         }
 
         js +=
         """
         const addressHex = "\(address)"
-        const rpcURL = "\(sessionConfig.rpcURL.absoluteString)"
+        const rpcURL = "\(sessionConfig.server.rpcURL.absoluteString)"
         const chainID = "\(sessionConfig.chainID)"
 
         function executeCallback (id, error, value) {
@@ -38,7 +35,7 @@ extension WKWebViewConfiguration {
 
         Trust.init(rpcURL, {
           getAccounts: function (cb) { cb(null, [addressHex]) },
-          signTransaction: function (tx, cb){
+          processTransaction: function (tx, cb){
             console.log('signing a transaction', tx)
             const { id = 8888 } = tx
             Trust.addCallback(id, cb)
@@ -57,7 +54,14 @@ extension WKWebViewConfiguration {
             console.log("signing a personal message", msgParams)
             Trust.addCallback(id, cb)
             webkit.messageHandlers.signPersonalMessage.postMessage({"name": "signPersonalMessage", "object": { data }, id: id})
-          }
+          },
+          signTypedMessage: function (msgParams, cb) {
+            const { data } = msgParams
+            const { id = 8888 } = msgParams
+            console.log("signing a typed message", msgParams)
+            Trust.addCallback(id, cb)
+            webkit.messageHandlers.signTypedMessage.postMessage({"name": "signTypedMessage", "object": { data }, id: id})
+            }
         }, {
             address: addressHex,
             networkVersion: chainID
@@ -81,6 +85,7 @@ extension WKWebViewConfiguration {
         config.userContentController.add(messageHandler, name: Method.signTransaction.rawValue)
         config.userContentController.add(messageHandler, name: Method.signPersonalMessage.rawValue)
         config.userContentController.add(messageHandler, name: Method.signMessage.rawValue)
+        config.userContentController.add(messageHandler, name: Method.signTypedMessage.rawValue)
         config.userContentController.addUserScript(userScript)
         return config
     }

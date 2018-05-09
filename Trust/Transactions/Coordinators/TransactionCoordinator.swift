@@ -3,50 +3,54 @@
 import Foundation
 import UIKit
 import Result
-import TrustKeystore
+import TrustCore
 
 protocol TransactionCoordinatorDelegate: class {
     func didPress(for type: PaymentFlow, in coordinator: TransactionCoordinator)
+    func didPressURL(_ url: URL)
     func didCancel(in coordinator: TransactionCoordinator)
 }
 
 class TransactionCoordinator: Coordinator {
 
     private let keystore: Keystore
+
     let storage: TransactionsStorage
+
+    let tokensStorage: TokensDataStore
+
     lazy var rootViewController: TransactionsViewController = {
         return self.makeTransactionsController(with: self.session.account)
     }()
 
-    lazy var dataCoordinator: TransactionDataCoordinator = {
-        let coordinator = TransactionDataCoordinator(
-            session: self.session,
-            storage: self.storage
-        )
-        return coordinator
+    lazy var viewModel: TransactionsViewModel = {
+        return TransactionsViewModel(network: network, storage: storage, session: session)
     }()
 
     weak var delegate: TransactionCoordinatorDelegate?
 
     let session: WalletSession
-    let tokensStorage: TokensDataStore
-    let navigationController: UINavigationController
+
+    let network: TrustNetwork
+
+    let navigationController: NavigationController
+
     var coordinators: [Coordinator] = []
 
     init(
         session: WalletSession,
-        navigationController: UINavigationController = NavigationController(),
+        navigationController: NavigationController = NavigationController(),
         storage: TransactionsStorage,
-        keystore: Keystore,
-        tokensStorage: TokensDataStore
+        tokensStorage: TokensDataStore,
+        network: TrustNetwork,
+        keystore: Keystore
     ) {
         self.session = session
         self.keystore = keystore
         self.navigationController = navigationController
         self.storage = storage
         self.tokensStorage = tokensStorage
-
-        NotificationCenter.default.addObserver(self, selector: #selector(didEnterForeground), name: .UIApplicationWillEnterForeground, object: nil)
+        self.network = network
     }
 
     func start() {
@@ -54,10 +58,9 @@ class TransactionCoordinator: Coordinator {
     }
 
     private func makeTransactionsController(with account: Wallet) -> TransactionsViewController {
-        let viewModel = TransactionsViewModel()
+
         let controller = TransactionsViewController(
             account: account,
-            dataCoordinator: dataCoordinator,
             session: session,
             viewModel: viewModel
         )
@@ -76,36 +79,12 @@ class TransactionCoordinator: Coordinator {
         return controller
     }
 
-    func showTransaction(_ transaction: Transaction) {
-        let controller = TransactionViewController(
-            session: session,
-            transaction: transaction
-        )
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            let nav = UINavigationController(rootViewController: controller)
-            nav.modalPresentationStyle = .formSheet
-            controller.navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(dismiss))
-            navigationController.present(nav, animated: true, completion: nil)
-        } else {
-            navigationController.pushViewController(controller, animated: true)
-        }
-    }
-
-    @objc func didEnterForeground() {
-        rootViewController.fetch()
-    }
-
     @objc func dismiss() {
         navigationController.dismiss(animated: true, completion: nil)
     }
 
     func stop() {
-        dataCoordinator.stop()
         session.stop()
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
     }
 
     @objc func deposit(sender: UIBarButtonItem) {
@@ -127,11 +106,20 @@ extension TransactionCoordinator: TransactionsViewControllerDelegate {
     }
 
     func didPressRequest(in viewController: TransactionsViewController) {
-        delegate?.didPress(for: .request, in: self)
+        delegate?.didPress(for: .request(token: TokensDataStore.etherToken(for: session.config)), in: self)
     }
 
     func didPressTransaction(transaction: Transaction, in viewController: TransactionsViewController) {
-        showTransaction(transaction)
+        let controller = TransactionViewController(
+            session: session,
+            transaction: transaction
+        )
+        controller.delegate = self
+        NavigationController.openFormSheet(
+            for: controller,
+            in: navigationController,
+            barItem: UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(dismiss))
+        )
     }
 
     func didPressDeposit(for account: Wallet, sender: UIView, in viewController: TransactionsViewController) {
@@ -144,5 +132,11 @@ extension TransactionCoordinator: TransactionsViewControllerDelegate {
 
     func reset() {
         delegate?.didCancel(in: self)
+    }
+}
+
+extension TransactionCoordinator: TransactionViewControllerDelegate {
+    func didPressURL(_ url: URL) {
+        delegate?.didPressURL(url)
     }
 }

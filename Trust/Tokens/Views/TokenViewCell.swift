@@ -11,8 +11,12 @@ class TokenViewCell: UITableViewCell {
     let titleLabel = UILabel()
     let amountLabel = UILabel()
     let currencyAmountLabel = UILabel()
-    let symbolImageView = UIImageView()
+    let symbolImageView = TokenImageView()
     let percentChange = UILabel()
+
+    private struct Layout {
+        static let stackVericalOffset: CGFloat = 10
+    }
 
     override init(style: UITableViewCellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -25,14 +29,14 @@ class TokenViewCell: UITableViewCell {
         symbolImageView.translatesAutoresizingMaskIntoConstraints = false
         symbolImageView.contentMode = .scaleAspectFit
 
+        percentChange.translatesAutoresizingMaskIntoConstraints = false
+        percentChange.textAlignment = .right
+
         amountLabel.translatesAutoresizingMaskIntoConstraints = false
         amountLabel.textAlignment = .right
 
         currencyAmountLabel.translatesAutoresizingMaskIntoConstraints = false
         currencyAmountLabel.textAlignment = .right
-
-        percentChange.translatesAutoresizingMaskIntoConstraints = false
-        percentChange.textAlignment = .right
 
         let leftStackView = UIStackView(arrangedSubviews: [titleLabel])
         leftStackView.translatesAutoresizingMaskIntoConstraints = false
@@ -52,7 +56,8 @@ class TokenViewCell: UITableViewCell {
         let stackView = UIStackView(arrangedSubviews: [symbolImageView, leftStackView, rightStackView])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.axis = .horizontal
-        stackView.spacing = 12
+        stackView.spacing = 15
+        stackView.alignment = .center
 
         symbolImageView.setContentHuggingPriority(.defaultLow, for: .horizontal)
         titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -61,16 +66,22 @@ class TokenViewCell: UITableViewCell {
         rightStackView.setContentHuggingPriority(.required, for: .horizontal)
         stackView.setContentHuggingPriority(.required, for: .horizontal)
 
-        addSubview(stackView)
+        contentView.addSubview(stackView)
 
         NSLayoutConstraint.activate([
-            symbolImageView.widthAnchor.constraint(equalToConstant: 42),
-            symbolImageView.heightAnchor.constraint(equalToConstant: 42),
-            stackView.topAnchor.constraint(equalTo: topAnchor, constant: StyleLayout.sideMargin),
-            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -StyleLayout.sideMargin),
-            stackView.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -StyleLayout.sideMargin),
-            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: StyleLayout.sideMargin),
+            symbolImageView.widthAnchor.constraint(equalToConstant: TokensLayout.cell.imageSize),
+            symbolImageView.heightAnchor.constraint(equalToConstant: TokensLayout.cell.imageSize),
+            stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Layout.stackVericalOffset),
+            stackView.trailingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.trailingAnchor),
+            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Layout.stackVericalOffset),
+            stackView.leadingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.leadingAnchor),
         ])
+
+        separatorInset = UIEdgeInsets(
+            top: 0,
+            left: TokensLayout.tableView.layoutInsets.left - contentView.layoutInsets.left - layoutInsets.left,
+            bottom: 0, right: 0
+        )
     }
 
     required init?(coder aDecoder: NSCoder) {
@@ -84,11 +95,11 @@ class TokenViewCell: UITableViewCell {
         titleLabel.font = viewModel.titleFont
 
         amountLabel.text = viewModel.amount
-        amountLabel.textColor = viewModel.amountTextColor
+        amountLabel.textColor = TokensLayout.cell.amountTextColor
         amountLabel.font = viewModel.amountFont
 
         currencyAmountLabel.text = viewModel.currencyAmount
-        currencyAmountLabel.textColor = viewModel.currencyAmountTextColor
+        currencyAmountLabel.textColor = TokensLayout.cell.currencyAmountTextColor
         currencyAmountLabel.font = viewModel.currencyAmountFont
 
         percentChange.text = viewModel.percentChange
@@ -97,7 +108,7 @@ class TokenViewCell: UITableViewCell {
 
         symbolImageView.kf.setImage(
             with: viewModel.imageUrl,
-            placeholder: viewModel.placeHolder
+            placeholder: viewModel.placeholderImage
         )
 
         backgroundColor = viewModel.backgroundColor

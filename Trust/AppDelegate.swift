@@ -12,18 +12,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UISplitViewControllerDele
     lazy var protectionCoordinator: ProtectionCoordinator = {
         return ProtectionCoordinator()
     }()
-    let branchCoordinator = BranchCoordinator()
+    let urlNavigatorCoordinator = URLNavigatorCoordinator()
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplicationLaunchOptionsKey: Any]?) -> Bool {
         window = UIWindow(frame: UIScreen.main.bounds)
-        do {
-            let keystore = try EtherKeystore()
-            coordinator = AppCoordinator(window: window!, keystore: keystore)
-            coordinator.start()
-        } catch {
-            print("EtherKeystore init issue.")
+
+        let keystore = EtherKeystore.shared
+        coordinator = AppCoordinator(window: window!, keystore: keystore, navigator: urlNavigatorCoordinator)
+        coordinator.start()
+
+        if !UIApplication.shared.isProtectedDataAvailable {
+            Analytics.track(.dataProtectionDisabled)
         }
+
         protectionCoordinator.didFinishLaunchingWithOptions()
-        branchCoordinator.didFinishLaunchingWithOptions(launchOptions: launchOptions)
+        urlNavigatorCoordinator.branch.didFinishLaunchingWithOptions(launchOptions: launchOptions)
         return true
     }
 
@@ -55,26 +57,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UISplitViewControllerDele
         return true
     }
 
-    func application(
-        _ application: UIApplication,
-        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
-        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-        Branch.getInstance().handlePushNotification(userInfo)
-    }
+//    func application(
+//        _ application: UIApplication,
+//        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+//        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+//        Branch.getInstance().handlePushNotification(userInfo)
+//    }
 
     // Respond to URI scheme links
-    func application(_ application: UIApplication, open url: URL, sourceApplication: String?, annotation: Any) -> Bool {
-        let branchHandled = Branch.getInstance().application(application,
-                                                             open: url,
-                                                             sourceApplication: sourceApplication,
-                                                             annotation: annotation
-        )
-        if !branchHandled {
-            // If not handled by Branch, do other deep link routing for the Facebook SDK, Pinterest SDK, etc
-        }
-
-        // do other deep link routing for the Facebook SDK, Pinterest SDK, etc
-        return true
+    func application(_ app: UIApplication, open url: URL, options: [UIApplicationOpenURLOptionsKey: Any] = [:]) -> Bool {
+        return urlNavigatorCoordinator.application(app, open: url, options: options)
     }
 
     // Respond to Universal Links

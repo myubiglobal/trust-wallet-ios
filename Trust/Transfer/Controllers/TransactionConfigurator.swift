@@ -3,6 +3,7 @@
 import Foundation
 import BigInt
 import Result
+import TrustCore
 import TrustKeystore
 import JSONRPCKit
 import APIKit
@@ -12,7 +13,7 @@ public struct PreviewTransaction {
     let account: Account
     let address: Address?
     let contract: Address?
-    let nonce: Int
+    let nonce: BigInt
     let data: Data
     let gasPrice: BigInt
     let gasLimit: BigInt
@@ -29,18 +30,7 @@ class TransactionConfigurator {
             configurationUpdate.value = configuration
         }
     }
-
-    lazy var calculatedGasPrice: BigInt = {
-        return transaction.gasPrice ?? configuration.gasPrice
-    }()
-
-    var calculatedGasLimit: BigInt? {
-        return transaction.gasLimit
-    }
-
-    var requestEstimateGas: Bool {
-        return transaction.gasLimit == .none
-    }
+    var requestEstimateGas: Bool
 
     var configurationUpdate: Subscribable<TransactionConfiguration> = Subscribable(nil)
 
@@ -52,63 +42,67 @@ class TransactionConfigurator {
         self.session = session
         self.account = account
         self.transaction = transaction
+        self.requestEstimateGas = transaction.gasLimit == .none
+
+        let nonce = transaction.nonce ?? BigInt(session.nonceProvider.nextNonce ?? -1)
+        let data: Data = TransactionConfigurator.data(for: transaction, from: account.address)
+        let calculatedGasLimit = transaction.gasLimit ?? TransactionConfigurator.gasLimit(for: transaction.transferType)
+        let calculatedGasPrice = min(max(transaction.gasPrice ?? session.chainState.gasPrice ?? GasPriceConfiguration.default, GasPriceConfiguration.min), GasPriceConfiguration.max)
 
         self.configuration = TransactionConfiguration(
-            gasPrice: min(max(transaction.gasPrice ?? GasPriceConfiguration.default, GasPriceConfiguration.min), GasPriceConfiguration.max),
-            gasLimit: transaction.gasLimit ?? GasLimitConfiguration.default,
-            data: transaction.data ?? Data()
+            gasPrice: calculatedGasPrice,
+            gasLimit: calculatedGasLimit,
+            data: data,
+            nonce: nonce
         )
     }
 
-    func load(completion: @escaping (Result<Void, AnyError>) -> Void) {
+    private static func data(for transaction: UnconfirmedTransaction, from: Address) -> Data {
         switch transaction.transferType {
-        case .ether:
-            guard requestEstimateGas else {
-                return completion(.success(()))
-            }
-            estimateGasLimit()
-            self.configuration = TransactionConfiguration(
-                gasPrice: calculatedGasPrice,
-                gasLimit: GasLimitConfiguration.default,
-                data: transaction.data ?? self.configuration.data
-            )
-            completion(.success(()))
+        case .ether, .dapp:
+            return transaction.data ?? Data()
         case .token:
-            session.web3.request(request: ContractERC20Transfer(amount: transaction.value, address: transaction.to!.description)) { [weak self] result in
-                guard let `self` = self else { return }
-                switch result {
-                case .success(let res):
-                    let data = Data(hex: res.drop0x)
-                    self.configuration = TransactionConfiguration(
-                        gasPrice: self.calculatedGasPrice,
-                        gasLimit: 144000,
-                        data: data
-                    )
-                    completion(.success(()))
-                case .failure(let error):
-                    completion(.failure(error))
-                }
-            }
+            return ERC20Encoder.encodeTransfer(to: transaction.to!, tokens: transaction.value.magnitude)
+        case .nft(let token):
+            let tokenID = BigUInt(token.id) ?? 0
+            return ERC721Encoder.encodeTransferFrom(from: from, to: transaction.to!, tokenId: tokenID)
         }
     }
 
-    func estimateGasLimit() {
-        let to: Address? = {
-            switch transaction.transferType {
-            case .ether: return transaction.to
-            case .token(let token):
-                return Address(string: token.contract)
-            }
-        }()
+    private static func gasLimit(for type: TransferType) -> BigInt {
+        switch type {
+        case .ether:
+            return GasLimitConfiguration.default
+        case .token:
+            return GasLimitConfiguration.tokenTransfer
+        case .dapp, .nft:
+            return GasLimitConfiguration.dappTransfer
+        }
+    }
 
+    private static func gasPrice(for type: TransferType) -> BigInt {
+        return GasPriceConfiguration.default
+    }
+
+    func load(completion: @escaping (Result<Void, AnyError>) -> Void) {
+        if requestEstimateGas {
+            estimateGasLimit { [weak self] result in
+                guard let `self` = self else { return }
+                switch result {
+                case .success(let gasLimit):
+                    self.refreshGasLimit(gasLimit)
+                case .failure: break
+                }
+            }
+        }
+        loadNonce(completion: completion)
+    }
+
+    func estimateGasLimit(completion: @escaping (Result<BigInt, AnyError>) -> Void) {
         let request = EstimateGasRequest(
-            from: session.account.address,
-            to: to,
-            value: transaction.value,
-            data: configuration.data
+            transaction: signTransaction
         )
-        Session.send(EtherServiceRequest(batch: BatchFactory().create(request))) { [weak self] result in
-            guard let `self` = self else { return }
+        Session.send(EtherServiceRequest(batch: BatchFactory().create(request))) { result in
             switch result {
             case .success(let gasLimit):
                 let gasLimit: BigInt = {
@@ -118,17 +112,44 @@ class TransactionConfigurator {
                     }
                     return limit + (limit * 20 / 100)
                 }()
-
-                self.configuration =  TransactionConfiguration(
-                    gasPrice: self.calculatedGasPrice,
-                    gasLimit: gasLimit,
-                    data: self.configuration.data
-                )
-            case .failure: break
+                completion(.success(gasLimit))
+            case .failure(let error):
+                completion(.failure(AnyError(error)))
             }
         }
     }
 
+    // combine into one function
+
+    func refreshGasLimit(_ gasLimit: BigInt) {
+        configuration = TransactionConfiguration(
+            gasPrice: configuration.gasPrice,
+            gasLimit: gasLimit,
+            data: configuration.data,
+            nonce: configuration.nonce
+        )
+    }
+
+    func refreshNonce(_ nonce: BigInt) {
+        configuration = TransactionConfiguration(
+            gasPrice: configuration.gasPrice,
+            gasLimit: configuration.gasLimit,
+            data: configuration.data,
+            nonce: nonce
+        )
+    }
+
+    func loadNonce(completion: @escaping (Result<Void, AnyError>) -> Void) {
+        session.nonceProvider.getNextNonce(force: false) { [weak self] result in
+            switch result {
+            case .success(let nonce):
+                self?.refreshNonce(nonce)
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
     func valueToSend() -> BigInt {
         var value = transaction.value
         if let balance = session.balance?.value,
@@ -144,11 +165,11 @@ class TransactionConfigurator {
 
     func previewTransaction() -> PreviewTransaction {
         return PreviewTransaction(
-            value: self.valueToSend(),
+            value: valueToSend(),
             account: account,
             address: transaction.to,
             contract: .none,
-            nonce: -1,
+            nonce: configuration.nonce,
             data: configuration.data,
             gasPrice: configuration.gasPrice,
             gasLimit: configuration.gasLimit,
@@ -156,28 +177,47 @@ class TransactionConfigurator {
         )
     }
 
-    func signTransaction() -> SignTransaction {
+    var signTransaction: SignTransaction {
         let value: BigInt = {
             switch transaction.transferType {
-            case .ether: return self.valueToSend()
-            case .token: return 0
+            case .ether, .dapp: return valueToSend()
+            case .token, .nft: return 0
             }
         }()
         let address: Address? = {
             switch transaction.transferType {
-            case .ether: return transaction.to
-            case .token(let token): return token.address
+            case .ether, .dapp: return transaction.to
+            case .token(let token): return token.contractAddress
+            case .nft(let token): return token.contractAddress
             }
         }()
+        let localizedObject: LocalizedOperationObject? = {
+            switch transaction.transferType {
+            case .ether, .dapp, .nft: return .none
+            case .token(let token):
+                return LocalizedOperationObject(
+                    from: account.address.eip55String,
+                    to: transaction.to?.eip55String ?? "",
+                    contract: token.contract,
+                    type: OperationType.tokenTransfer.rawValue,
+                    value: BigInt(transaction.value.magnitude).description,
+                    symbol: token.symbol,
+                    name: token.name,
+                    decimals: token.decimals
+                )
+            }
+        }()
+
         let signTransaction = SignTransaction(
             value: value,
             account: account,
             to: address,
-            nonce: -1,
+            nonce: configuration.nonce,
             data: configuration.data,
             gasPrice: configuration.gasPrice,
             gasLimit: configuration.gasLimit,
-            chainID: session.config.chainID
+            chainID: session.config.chainID,
+            localizedObject: localizedObject
         )
 
         return signTransaction
@@ -200,7 +240,7 @@ class TransactionConfigurator {
 
         //We check if it is ETH or token operation.
         switch transaction.transferType {
-        case .ether:
+        case .ether, .dapp, .nft:
             if transaction.value > balance.value {
                 etherSufficient = false
                 gasSufficient = false

@@ -4,34 +4,21 @@ import XCTest
 @testable import Trust
 
 class SettingsCoordinatorTests: XCTestCase {
-    
-    func testShowAccounts() {
-        let coordinator = SettingsCoordinator(
-            navigationController: FakeNavigationController(),
-            keystore: FakeEtherKeystore(),
-            session: .make(),
-            storage: FakeTransactionsStorage(),
-            balanceCoordinator: FakeGetBalanceCoordinator()
-        )
-        
-        coordinator.showAccounts()
-        
-        XCTAssertTrue(coordinator.coordinators.first is AccountsCoordinator)
-        XCTAssertTrue((coordinator.navigationController.presentedViewController as? UINavigationController)?.viewControllers[0] is AccountsViewController)
-    }
-    
+
     func testOnDeleteCleanStorage() {
         let storage = FakeTransactionsStorage()
         let coordinator = SettingsCoordinator(
             navigationController: FakeNavigationController(),
             keystore: FakeEtherKeystore(),
             session: .make(),
-            storage: FakeTransactionsStorage(),
-            balanceCoordinator: FakeGetBalanceCoordinator()
+            storage: storage,
+            balanceCoordinator: FakeGetBalanceCoordinator(),
+            sharedRealm: .make()
         )
         storage.add([.make()])
+        storage.updateTransactionSection()
         
-        XCTAssertEqual(1, storage.count)
+        XCTAssertEqual(1, storage.transactionSections.count)
         
         let accountCoordinator = AccountsCoordinator(
             navigationController: FakeNavigationController(),
@@ -41,7 +28,8 @@ class SettingsCoordinatorTests: XCTestCase {
         )
         
         coordinator.didDeleteAccount(account: .make(), in: accountCoordinator)
+        storage.updateTransactionSection()
         
-        XCTAssertEqual(0, storage.count)
+        XCTAssertEqual(0, storage.transactionSections.count)
     }
 }

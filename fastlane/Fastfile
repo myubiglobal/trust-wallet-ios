@@ -27,13 +27,19 @@ platform :ios do
     snapshot
     frameit(white: true)
   end
+  
+  lane :refresh_dsyms do
+    download_dsyms                  # Download dSYM files from iTC
+    upload_symbols_to_crashlytics   # Upload them to Crashlytics
+    clean_build_artifacts           # Delete the local dSYM files
+  end
 
   desc "Deploy a new version to the App Store"
   lane :release do
     cocoapods(use_bundle_exec: false)
     increment_build_number
     ensure_git_branch()
-    increment_version_number(bump_type: "patch")
+    increment_version_number(bump_type: "minor")
     cert
     match(type: "appstore", readonly: true)
     gym(scheme: "Trust")
