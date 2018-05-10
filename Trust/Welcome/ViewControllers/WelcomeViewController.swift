@@ -49,10 +49,11 @@ class WelcomeViewController: UIViewController {
     }()
     let pages: [OnboardingPageViewModel] = [
         OnboardingPageViewModel(
-            title: NSLocalizedString("welcome.privateAndSecure.label.title", value: "Private & Secure", comment: ""),
-            subtitle: NSLocalizedString("welcome.privateAndSecure.label.description", value: "Private keys never leave your device.", comment: ""),
-            image: R.image.onboarding_lock()!
+            title: NSLocalizedString("", value: "", comment: ""),
+            subtitle: NSLocalizedString("", value: "", comment: ""),
+            image: R.image.mascot_happy()!
         ),
+        /*
         OnboardingPageViewModel(
             title: NSLocalizedString("welcome.erc20.label.title", value: "ERC20 Compatible", comment: ""),
             subtitle: NSLocalizedString("welcome.erc20.label.description", value: "Support for ERC20 tokens by default. ", comment: ""),
@@ -68,6 +69,7 @@ class WelcomeViewController: UIViewController {
             subtitle: NSLocalizedString("welcome.ultraReliable.label.description", value: "The fastest Ethereum wallet experience on mobile", comment: ""),
             image: R.image.onboarding_rocket()!
         ),
+        */
     ]
 
     override func viewDidLoad() {
@@ -75,7 +77,7 @@ class WelcomeViewController: UIViewController {
 
         Analytics.track(.welcomeScreen)
 
-        viewModel.numberOfPages = pages.count
+        viewModel.numberOfPages = 0
         view.addSubview(collectionViewController.view)
 
         let stackView = UIStackView(arrangedSubviews: [

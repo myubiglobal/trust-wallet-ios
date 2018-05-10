@@ -38,10 +38,10 @@ class SettingsViewController: FormViewController, Coordinator {
     weak var accountsCoordinator: AccountsCoordinator?
 
     init(
-        session: WalletSession,
-        keystore: Keystore,
-        balanceCoordinator: TokensBalanceService,
-        accountsCoordinator: AccountsCoordinator
+            session: WalletSession,
+            keystore: Keystore,
+            balanceCoordinator: TokensBalanceService,
+            accountsCoordinator: AccountsCoordinator
     ) {
         self.session = session
         self.keystore = keystore
@@ -61,77 +61,81 @@ class SettingsViewController: FormViewController, Coordinator {
 
         form = Section()
 
-            <<< networkRow()
+                <<< networkRow()
 
-            <<< walletsRow(for: account.address)
+                <<< walletsRow(for: account.address)
 
-            +++ Section(NSLocalizedString("settings.security.label.title", value: "Security", comment: ""))
+                <<< currencyRow()
+            
+                +++ Section(NSLocalizedString("settings.security.label.title", value: "Security", comment: ""))
 
-            <<< SwitchRow { [weak self] in
-                $0.title = self?.viewModel.passcodeTitle
-                $0.value = self?.isPasscodeEnabled
-            }.onChange { [unowned self] row in
-                if row.value == true {
-                    self.setPasscode { result in
-                        row.value = result
-                        row.updateCell()
-                    }
-                } else {
-                    self.lock.deletePasscode()
+                <<< SwitchRow { [weak self] in
+            $0.title = self?.viewModel.passcodeTitle
+            $0.value = self?.isPasscodeEnabled
+        }.onChange { [unowned self] row in
+            if row.value == true {
+                self.setPasscode { result in
+                    row.value = result
+                    row.updateCell()
                 }
-            }.cellSetup { cell, _ in
-                cell.imageView?.image = R.image.settings_colorful_security()
+            } else {
+                self.lock.deletePasscode()
             }
+        }.cellSetup { cell, _ in
+            cell.imageView?.image = R.image.settings_colorful_security()
+        }
 
-            <<< AppFormAppearance.button { [weak self] row in
-                row.cellStyle = .value1
-                row.presentationMode = .show(controllerProvider: ControllerProvider<UIViewController>.callback {
-                    let controller = NotificationsViewController()
-                    controller.didChange = { [weak self] change in
-                        self?.run(action: .pushNotifications(change))
-                    }
-                    return controller
-                }, onDismiss: { _ in
+                <<< AppFormAppearance.button { [weak self] row in
+            row.cellStyle = .value1
+            row.presentationMode = .show(controllerProvider: ControllerProvider<UIViewController>.callback {
+                let controller = NotificationsViewController()
+                controller.didChange = { [weak self] change in
+                    self?.run(action: .pushNotifications(change))
+                }
+                return controller
+            }, onDismiss: { _ in
             })
-            }.cellUpdate { cell, _ in
-                cell.imageView?.image = R.image.settings_colorful_notifications()
-                cell.textLabel?.text = NSLocalizedString("settings.pushNotifications.title", value: "Push Notifications", comment: "")
-                cell.accessoryType = .disclosureIndicator
-            }
+        }.cellUpdate { cell, _ in
+            cell.imageView?.image = R.image.settings_colorful_notifications()
+            cell.textLabel?.text = NSLocalizedString("settings.pushNotifications.title", value: "Push Notifications", comment: "")
+            cell.accessoryType = .disclosureIndicator
+        }
 
-            +++ Section()
+                //+++ Section()
 
-            <<< currencyRow()
-            <<< browserRow()
+                //<<< currencyRow()
+                //<<< browserRow()
 
-            +++ Section(NSLocalizedString("settings.joinCommunity.label.title", value: "Join Community", comment: ""))
+                //+++ Section(NSLocalizedString("settings.joinCommunity.label.title", value: "Join Community", comment: ""))
 
-            <<< linkProvider(type: .twitter)
-            <<< linkProvider(type: .telegram)
-            <<< linkProvider(type: .facebook)
-            <<< linkProvider(type: .discord)
+                //<<< linkProvider(type: .twitter)
+                //<<< linkProvider(type: .telegram)
+                //<<< linkProvider(type: .facebook)
+                //<<< linkProvider(type: .discord)
 
-            +++ Section(NSLocalizedString("settings.support.label.title", value: "Support", comment: ""))
+                +++ Section(NSLocalizedString("settings.support.label.title", value: "Support", comment: ""))
 
-            <<< AppFormAppearance.button { button in
-                button.title = NSLocalizedString("settings.shareWithFriends.button.title", value: "Share With Friends", comment: "")
-                button.cell.imageView?.image = R.image.settings_colorful_share()
-            }.onCellSelection { [unowned self] cell, _  in
-                self.helpUsCoordinator.presentSharing(in: self, from: cell.contentView)
-            }
+            /*
+                <<< AppFormAppearance.button { button in
+            button.title = NSLocalizedString("settings.shareWithFriends.button.title", value: "Share With Friends", comment: "")
+            button.cell.imageView?.image = R.image.settings_colorful_share()
+        }.onCellSelection { [unowned self] cell, _  in
+            self.helpUsCoordinator.presentSharing(in: self, from: cell.contentView)
+        }
+            */
 
-            +++ Section()
+                //+++ Section()
 
-            <<< aboutRow()
-            <<< supportRow()
+                //<<< aboutRow()
+                <<< supportRow()
 
-            +++ Section()
+                +++ Section()
 
-            <<< TextRow {
-                $0.title = NSLocalizedString("settings.version.label.title", value: "Version", comment: "")
-                $0.value = Bundle.main.fullVersion
-                $0.disabled = true
-            }
+                <<< TextRow {
+            $0.title = NSLocalizedString("settings.version.label.title", value: "Version", comment: "")
+            $0.value = Bundle.main.fullVersion
+            $0.disabled = true
+        }
     }
 
     private func networkRow() -> PushRow<RPCServer> {
@@ -266,7 +270,7 @@ class SettingsViewController: FormViewController, Coordinator {
 
     func setPasscode(completion: ((Bool) -> Void)? = .none) {
         let coordinator = LockCreatePasscodeCoordinator(
-            model: LockCreatePasscodeViewModel()
+                model: LockCreatePasscodeViewModel()
         )
         coordinator.delegate = self
         coordinator.start()
@@ -279,7 +283,7 @@ class SettingsViewController: FormViewController, Coordinator {
     }
 
     private func linkProvider(
-        type: URLServiceProvider
+            type: URLServiceProvider
     ) -> ButtonRow {
         return AppFormAppearance.button {
             $0.title = type.title

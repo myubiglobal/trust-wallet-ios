@@ -19,8 +19,8 @@ public struct Constants {
     public static let supportEmail = "support@myubi.io"
     public static let donationAddress = "#"
 
-    public static let dappsBrowserURL = "https://start.myubi.io"
-    public static let dappsOpenSea = "https://opensea.io"
+    public static let dappsBrowserURL = "https://myubi.global"
+    public static let dappsOpenSea = "https://myubi.global"
 
     public static let images = "https://trustwalletapp.com/images"
 }

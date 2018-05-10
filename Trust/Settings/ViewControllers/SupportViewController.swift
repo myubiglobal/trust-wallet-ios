@@ -6,9 +6,15 @@ import UIKit
 import Eureka
 import MessageUI
 
+protocol SupportViewControllerDelegate: class {
+    func didPressURL(_ url: URL, in controller: SupportViewController)
+}
+
 class SupportViewController: FormViewController {
 
     let viewModel = SupportViewModel()
+    weak var delegate: SupportViewControllerDelegate?
+
     init() {
         super.init(nibName: nil, bundle: nil)
     }
@@ -20,53 +26,37 @@ class SupportViewController: FormViewController {
 
         form +++ Section()
 
-            <<< link(
+                <<< link(
                 title: NSLocalizedString("settings.faq.button.title", value: "FAQ", comment: ""),
                 value: "https://myubi.global",
                 image: R.image.settings_faq()
-            )
+        )
 
-            <<< link(
+                <<< link(
                 title: NSLocalizedString("settings.privacyPolicy.button.title", value: "Privacy Policy", comment: ""),
                 value: "https://myubi.global",
                 image: R.image.settings_privacy_policy()
-            )
+        )
 
-            <<< link(
+                <<< link(
                 title: NSLocalizedString("settings.termsOfService.button.title", value: "Terms of Service", comment: ""),
                 value: "https://myubi.global",
                 image: R.image.settings_terms()
-            )
+        )
 
-            <<< AppFormAppearance.button { button in
-                button.title = NSLocalizedString("settings.emailUsReadFAQ.button.title", value: "Email Us (Read FAQ first)", comment: "")
-            }.onCellSelection { [weak self] _, _  in
-                self?.sendUsEmail()
-            }.cellSetup { cell, _ in
-                cell.imageView?.image = R.image.settings_email()
-            }
-
-            /*
-            +++ Section(NSLocalizedString("settings.openSourceDevelopment.label.title", value: "Open Source Development", comment: ""))
-
-            <<< link(
-                title: NSLocalizedString("settings.sourceCode.button.title", value: "Source Code", comment: ""),
-                value: "https://github.com/TrustWallet/trust-wallet-ios",
-                image: R.image.settings_open_source()
-            )
-
-            <<< link(
-                title: NSLocalizedString("settings.reportBug.button.title", value: "Report a Bug", comment: ""),
-                value: "https://github.com/TrustWallet/trust-wallet-ios/issues/new",
-                image: R.image.settings_bug()
-            )
-            */
+                <<< AppFormAppearance.button { button in
+            button.title = NSLocalizedString("settings.emailUsReadFAQ.button.title", value: "Email Us (Read FAQ first)", comment: "")
+        }.onCellSelection { [weak self] _, _  in
+            self?.sendUsEmail()
+        }.cellSetup { cell, _ in
+            cell.imageView?.image = R.image.settings_email()
+        }
     }
 
     private func link(
-        title: String,
-        value: String,
-        image: UIImage?
+            title: String,
+            value: String,
+            image: UIImage?
     ) -> ButtonRow {
         return AppFormAppearance.button {
             $0.title = title
